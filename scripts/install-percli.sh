@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs percli, the Perses CLI, on Linux or macOS from the official GitHub release, after verifying the
-# archive against the release's checksums file. Installs the percli binary and the release's plugins-archive/
-# folder, which offline `percli migrate --plugin.path` needs to convert Grafana dashboards.
+# archive against the release's checksums file. Installs the percli binary and the release's plugins, UNPACKED:
+# offline `percli migrate --plugin.path` needs unpacked plugins. Pointed at the archives it exits 0 and turns every
+# panel into a "Migration from Grafana not supported !" placeholder (measured with 0.54.0).
 #
 #   scripts/install-percli.sh                      # version 0.54.0 into ~/.local/bin and ~/.local/share/perses
 #   PERCLI_VERSION=0.54.0 PREFIX=/usr/local/bin PLUGINS_DIR=/usr/local/share/perses scripts/install-percli.sh
@@ -47,12 +48,22 @@ actual="$(sha256 "${work}/${archive}")"
 echo "checksum OK: ${actual}"
 
 tar -xzf "${work}/${archive}" -C "${work}" percli plugins-archive
+# each plugin archive unpacked into a folder of its own name, which is what --plugin.path reads
+mkdir -p "${work}/plugins"
+for a in "${work}"/plugins-archive/*.tar.gz; do
+  name="$(basename "${a}" .tar.gz)"
+  mkdir -p "${work}/plugins/${name}"
+  tar -xzf "${a}" -C "${work}/plugins/${name}"
+done
+count="$(ls "${work}/plugins" | wc -l | tr -d ' ')"
+[[ "${count}" -gt 0 ]] || { echo "the release has no plugins to unpack" >&2; exit 1; }
+
 mkdir -p "${PREFIX}" "${PLUGINS_DIR}"
 install -m 0755 "${work}/percli" "${PREFIX}/percli"
 # replaced as a whole, so a plugin dropped from a newer release does not linger
-rm -rf "${PLUGINS_DIR}/plugins-archive"
-cp -R "${work}/plugins-archive" "${PLUGINS_DIR}/plugins-archive"
+rm -rf "${PLUGINS_DIR}/plugins" "${PLUGINS_DIR}/plugins-archive"
+cp -R "${work}/plugins" "${PLUGINS_DIR}/plugins"
 echo "installed ${PREFIX}/percli"
-echo "installed ${PLUGINS_DIR}/plugins-archive ($(ls "${PLUGINS_DIR}/plugins-archive" | wc -l | tr -d ' ') plugins): pass it to percli migrate --plugin.path"
+echo "installed ${PLUGINS_DIR}/plugins (${count} plugins, unpacked): pass it to percli migrate --plugin.path"
 "${PREFIX}/percli" version
 case ":${PATH}:" in *":${PREFIX}:"*) ;; *) echo "note: ${PREFIX} is not on PATH; add it, or call ${PREFIX}/percli" ;; esac

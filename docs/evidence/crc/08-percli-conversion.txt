@@ -1,0 +1,25 @@
+# percli 0.54.0 converting charts/ipsec-nas/files/ipsec-nas.json (16 Grafana panels), 2026-10-03.
+# Panel kinds of the result, counted from the JSON output.
+
+## --plugin.path pointed at the release's plugins-archive/ (the .tar.gz files, as the first version of
+## docs/percli.md said): exit 0, and every panel a placeholder
+{'Markdown': 16}     each: {"kind": "Markdown", "spec": {"text": "**Migration from Grafana not supported !**"}}
+The variables were placeholders too: StaticListVariable ["grafana", "migration", "not", "supported"].
+--log.level debug logged nothing about plugins.
+
+## --plugin.path pointed at the plugins UNPACKED (each archive into a folder of its own name)
+{'StatChart': 11, 'Table': 1, 'TimeSeriesChart': 3, 'BarChart': 1}
+macOS arm64 (script and by hand), Linux arm64 (script), Linux amd64 (script and by hand): the same.
+
+## The container docker.io/persesdev/perses:v0.54.0
+/etc/perses/plugins: 0 entries in the image; /etc/perses/plugins-archive: 30 archives.
+Started as a server (podman run -d), it unpacks them in ~3 s; then
+podman exec <c> /bin/percli migrate ... --plugin.path /etc/perses/plugins  ->  {'StatChart': 11, 'Table': 1, 'TimeSeriesChart': 3, 'BarChart': 1}
+
+## Offline (percli 0.54.0, upstream plugins) vs COO's Perses server (POST /api/migrate, Red Hat's build)
+16 panels each; variables equal; layouts equal; 15 of 16 panels identical.
+The table (panel 13) differs:
+  offline: value columns named "value #1".."value #11"; cellSettings kept (0 -> DOWN/NO/MISSING red #f2495c,
+           1 -> UP/YES/PRESENT green #73bf69); units kept ("requests/sec", "seconds")
+  server : value columns named "Value #A".."Value #K" (Grafana's query refIds); no cellSettings; no units
+Which names the console's table plugin renders is to be seen in the console.
