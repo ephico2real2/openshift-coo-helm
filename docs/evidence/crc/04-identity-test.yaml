@@ -1,0 +1,58 @@
+# Test only, removed after: does Perses query Thanos with the caller's token?
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: perses-viewer-test
+  namespace: kcs-ipsec
+---
+# what an application team's reader would get in its own namespace: view + the two Perses viewer roles
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: perses-viewer-test-view
+  namespace: kcs-ipsec
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}
+subjects: [{kind: ServiceAccount, name: perses-viewer-test, namespace: kcs-ipsec}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: perses-viewer-test-dashboards
+  namespace: kcs-ipsec
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: persesdashboard-viewer-role}
+subjects: [{kind: ServiceAccount, name: perses-viewer-test, namespace: kcs-ipsec}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: perses-viewer-test-datasources
+  namespace: kcs-ipsec
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: persesdatasource-viewer-role}
+subjects: [{kind: ServiceAccount, name: perses-viewer-test, namespace: kcs-ipsec}]
+---
+# the same datasource shape COO uses for its own (cluster-wide Thanos port 9091)
+apiVersion: perses.dev/v1alpha2
+kind: PersesDatasource
+metadata:
+  name: thanos-9091-test
+  namespace: kcs-ipsec
+spec:
+  client:
+    tls:
+      enable: true
+      caCert:
+        type: file
+        certPath: /ca/service-ca.crt
+  config:
+    display:
+      name: "Thanos 9091 (test)"
+    default: true
+    plugin:
+      kind: PrometheusDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+            # the Perses secret the operator derives from client.tls: "<datasource>-secret"
+            secret: thanos-9091-test-secret

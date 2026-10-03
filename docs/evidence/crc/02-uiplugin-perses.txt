@@ -1,0 +1,70 @@
+# CRC 4.22.7, COO 1.5.3. Enable Perses in the console with a UIPlugin, and record what it creates.
+# Started 2026-10-03T21:12:50Z
+$ oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}'   # before
+["networking-console-plugin","monitoring-plugin","gitops-plugin","nmstate-console-plugin"]
+
+$ oc apply -f uiplugin.yaml
+    apiVersion: observability.openshift.io/v1alpha1
+    kind: UIPlugin
+    metadata:
+      name: monitoring
+    spec:
+      type: Monitoring
+      monitoring:
+        perses:
+          enabled: true
+uiplugin.observability.openshift.io/monitoring created
+applied at 21:12:50Z
+# UIPlugin Available after 5s
+$ oc get uiplugin monitoring -o jsonpath=conditions
+Reconciled=True UIPluginReconciled: Plugin reconciled successfully
+Degraded=False UIPluginReconciled: 
+Available=True UIPluginAvailable: 
+
+# What the UIPlugin created (before vs after: the COO namespace, ConsolePlugins, console plugin list, global datasources):
+> configmap/perses-config
+> deployment.apps/monitoring
+> perses.perses.dev/perses
+> persesdatasource.perses.dev/accelerators-thanos-querier-datasource
+> pod/monitoring-779b476f46-hj926
+> pod/perses-0
+> replicaset.apps/monitoring-779b476f46
+< role.rbac.authorization.k8s.io/prometheus-k8s
+< rolebinding.rbac.authorization.k8s.io/prometheus-k8s
+> secret/monitoring
+> secret/monitoring-sa-dockercfg-scxn8
+> secret/perses
+> secret/perses-sa-dockercfg-59986
+> service/monitoring
+> service/perses
+> serviceaccount/monitoring-sa
+> serviceaccount/perses-sa
+> statefulset.apps/perses
+> consoleplugin.console.openshift.io/monitoring-console-plugin
+> console.spec.plugins: monitoring-console-plugin
+> uiplugin.observability.openshift.io/monitoring
+
+$ oc get console.operator.openshift.io cluster -o jsonpath={.spec.plugins}   # after
+["networking-console-plugin","monitoring-plugin","gitops-plugin","nmstate-console-plugin","monitoring-console-plugin"]
+
+$ oc -n openshift-cluster-observability-operator get deploy,pods -o wide
+NAME                                        READY   UP-TO-DATE   AVAILABLE   AGE
+monitoring                                  1/1     1            1           14s
+obo-prometheus-operator                     1/1     1            1           75s
+obo-prometheus-operator-admission-webhook   2/2     2            2           75s
+observability-operator                      1/1     1            1           75s
+perses-operator                             1/1     1            1           74s
+NAME                                                        READY  STATUS
+monitoring-779b476f46-hj926                                 1/1    Running
+obo-prometheus-operator-6ddb664c4f-kvvx7                    1/1    Running
+obo-prometheus-operator-admission-webhook-65f6cd89f4-g8xjj  1/1    Running
+obo-prometheus-operator-admission-webhook-65f6cd89f4-pzfrw  1/1    Running
+observability-operator-599c6f89d-m5z9s                      1/1    Running
+perses-0                                                    1/1    Running
+perses-operator-7d5f5d87c7-qxt9f                            1/1    Running
+
+$ oc get perses -A; oc get persesglobaldatasource,persesdatasource -A
+NAMESPACE                                  NAME     AGE
+openshift-cluster-observability-operator   perses   14s
+NAMESPACE                                  NAME                                                                 AGE
+openshift-cluster-observability-operator   persesdatasource.perses.dev/accelerators-thanos-querier-datasource   15s

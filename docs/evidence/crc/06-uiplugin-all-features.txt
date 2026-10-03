@@ -1,0 +1,28 @@
+# CRC 4.22.7, COO 1.5.3. Enable incidents + clusterHealthAnalyzer beside perses (acm needs an ACM hub: not possible here).
+# Started 2026-10-03T21:44:40Z. Role prometheus-k8s before: absent
+$ oc patch uiplugin monitoring --type merge -p {"spec":{"monitoring":{"incidents":{"enabled":true},"clusterHealthAnalyzer":{"enabled":true}}}}
+uiplugin.observability.openshift.io/monitoring patched
+patched at 21:44:40Z
+
+# What incidents + clusterHealthAnalyzer added/removed:
+> clusterrole.rbac.authorization.k8s.io/components-health-view
+> clusterrolebinding.rbac.authorization.k8s.io/monitoring-components-health-view
+> clusterrolebinding.rbac.authorization.k8s.io/monitoring-sa-system-auth-delegator
+> clusterrolebinding.rbac.authorization.k8s.io/monitoringcluster-monitoring-view
+< openshift-cluster-observability-operator/pod/monitoring-779b476f46-hj926
+> openshift-cluster-observability-operator/pod/health-analyzer-5c7989fd48-kwxmd
+> openshift-cluster-observability-operator/pod/monitoring-75c5f5c9fc-sqrq5
+> openshift-cluster-observability-operator/service/health-analyzer
+> openshift-cluster-observability-operator/deployment.apps/health-analyzer
+> openshift-cluster-observability-operator/configmap/components-config
+> openshift-cluster-observability-operator/secret/health-analyzer-tls
+> openshift-cluster-observability-operator/role.rbac.authorization.k8s.io/prometheus-k8s
+> openshift-cluster-observability-operator/rolebinding.rbac.authorization.k8s.io/prometheus-k8s
+> openshift-cluster-observability-operator/servicemonitor.monitoring.coreos.com/health-analyzer
+
+# Reduce to the documented setting only: clusterHealthAnalyzer (Red Hat: incident detection, GA on 4.19+); incidents off
+$ oc patch uiplugin monitoring --type merge -p {"spec":{"monitoring":{"incidents":{"enabled":false}}}}
+uiplugin.observability.openshift.io/monitoring patched
+21:48:57Z after 2 more reconciles: role=role.rbac.authorization.k8s.io/prometheus-k8s, health-analyzer=1
+$ oc get uiplugin monitoring -o jsonpath={.spec.monitoring}
+{"clusterHealthAnalyzer":{"enabled":true},"incidents":{"enabled":false},"perses":{"enabled":true}}

@@ -1,0 +1,28 @@
+# Test only, removed after: the namespace-scoped Thanos port. 9092 authorises `get pods` in the namespace the
+# query names, which `view` grants; the namespace parameter is mandatory there.
+apiVersion: perses.dev/v1alpha2
+kind: PersesDatasource
+metadata:
+  name: thanos-9092-test
+  namespace: kcs-ipsec
+spec:
+  client:
+    tls:
+      enable: true
+      caCert:
+        type: file
+        certPath: /ca/service-ca.crt
+  config:
+    display:
+      name: "Thanos 9092 kcs-ipsec (test)"
+    default: false
+    plugin:
+      kind: PrometheusDatasource
+      spec:
+        queryParams:
+          namespace: kcs-ipsec
+        proxy:
+          kind: HTTPProxy
+          spec:
+            url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9092
+            secret: thanos-9092-test-secret

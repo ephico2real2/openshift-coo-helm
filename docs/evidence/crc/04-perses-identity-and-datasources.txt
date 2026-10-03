@@ -1,0 +1,36 @@
+# CRC 4.22.7, COO 1.5.3, Perses enabled by the UIPlugin. How Perses authenticates and reaches Thanos.
+# Recorded 2026-10-03, via 'oc -n openshift-cluster-observability-operator port-forward svc/perses 18080:8080'.
+
+## Configuration read from the cluster
+- ConsolePlugin monitoring-console-plugin proxies alias "perses" -> svc perses:8080 with authorization: UserToken
+  (the console forwards the logged-in user's own token).
+- Perses resource: security.authentication.providers.kubernetes.enable=true, enable_native=false,
+  authorization.provider.kubernetes.enable=true, client.kubernetesAuth.enable=true, tls.enable=true (HTTPS on 8080).
+- The automatic datasource accelerators-thanos-querier-datasource (owner UIPlugin/monitoring, COO namespace):
+  HTTPProxy https://thanos-querier.openshift-monitoring.svc.cluster.local:9091, secret
+  accelerators-thanos-querier-datasource-secret. That secret is a PERSES secret (not a Kubernetes Secret) and holds
+  only tlsConfig.caFile: no token, no credentials.
+- A namespace becomes a Perses project when a Perses resource exists in it (kcs-ipsec appeared at once).
+- Pattern: the operator derives a Perses secret "<datasource>-secret" from spec.client.tls, but the proxy must name it
+  (spec.config.plugin.spec.proxy.spec.secret); without it: "x509: certificate signed by unknown authority" (HTTP 500).
+
+## Who may do what (perses-viewer-test: view + persesdashboard-viewer-role + persesdatasource-viewer-role in kcs-ipsec)
+no token                                   GET /api/v1/projects                      401
+perses-viewer-test                         GET /api/v1/projects                      200, only kcs-ipsec
+perses-viewer-test                         datasources in the COO project            403 "missing 'read' permission"
+
+## Whose token reaches Thanos: THE CALLER'S
+kubeadmin           kcs-ipsec datasource -> Thanos 9091          200, ipsec_nas_tunnel_up = 1
+perses-viewer-test  kcs-ipsec datasource -> Thanos 9091          403 "Forbidden (user=system:serviceaccount:kcs-ipsec:perses-viewer-test,
+                                                                       verb=get, resource=prometheuses, subresource=api)"  <- Thanos's own refusal
+perses-viewer-test  thanos-9092 (tenancy), no namespace param    400 Bad Request (the backend proxy does not add queryParams)
+perses-viewer-test  thanos-9092, namespace=kcs-ipsec             200, ipsec_nas_tunnel_up = 1
+perses-viewer-test  thanos-9092, namespace=openshift-monitoring  403 (verb=get, resource=pods)
+perses-viewer-test  thanos-9092 kcs-ipsec, node_nfs_requests_total   200, empty (platform metric, not in the namespace)
+Perses stored queryParams {namespace: kcs-ipsec} on thanos-9092-test; that the console's frontend adds it is to be seen in the UI.
+
+## Consequences for the design
+- Per-application dashboards for namespace-only viewers need a PersesDatasource in the application's namespace on
+  Thanos 9092 with queryParams namespace=<ns>; a 9091 datasource works only for cluster-monitoring-view holders.
+- Readers of the namespace see the application's own metrics, not platform metrics (the NFS requests/s column).
+- No shared credential exists anywhere: nothing to store, rotate or leak in a chart.

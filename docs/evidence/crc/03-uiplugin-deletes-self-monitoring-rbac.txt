@@ -1,0 +1,29 @@
+# CRC 4.22.7, COO 1.5.3. Finding: a UIPlugin reconcile deletes COO's own self-monitoring RBAC.
+
+## Observed (API server audit log, user system:serviceaccount:openshift-cluster-observability-operator:observability-operator-sa)
+2026-10-03T21:11:56Z  patch  roles/rolebindings prometheus-k8s   201   (operator start: self-monitoring creates them)
+2026-10-03T21:12:50Z  delete roles/rolebindings prometheus-k8s   200   (the UIPlugin 'monitoring' was created at 21:12:50)
+Operator log at the same second: "Reconciling observability UI plugin" x3. Pod restarts: 0.
+
+## Effect
+up{namespace="openshift-cluster-observability-operator"} -> 0 series: the platform Prometheus cannot discover
+COO's operator (ServiceMonitor observability-operator stays, but prometheus-k8s may not list endpoints there).
+
+## Reproduced
+21:14:45Z operator pod deleted -> Role re-created at ~21:15:01Z and kept; up -> 1 series.
+21:16:36Z UIPlugin annotated (one reconcile) -> Role gone by 21:16:46Z and stays gone.
+
+## Cause (source, rhobs/observability-operator main)
+pkg/controllers/operator/components.go       Role + RoleBinding "prometheus-k8s" (self-monitoring)
+pkg/controllers/uiplugin/health_analyzer.go  newHealthAnalyzerPrometheusRole/RoleBinding: same names, same namespace
+pkg/controllers/uiplugin/components.go:133   deployHealthAnalyzer := incidentsEnabled || healthAnalyzerEnabled
+pkg/controllers/uiplugin/components.go:145-146
+    reconciler.NewOptionalUpdater(newHealthAnalyzerPrometheusRole(namespace), plugin, deployHealthAnalyzer)
+    reconciler.NewOptionalUpdater(newHealthAnalyzerPrometheusRoleBinding(namespace), plugin, deployHealthAnalyzer)
+  With Perses only (no incidents, no clusterHealthAnalyzer) the optional objects are deleted on every reconcile,
+  taking the self-monitoring ones with them (two controllers, one object name).
+
+## Scope
+Affects only COO's own operator metrics and the alerts in its PrometheusRule 'observability-operator'.
+Not affected: openshift-monitoring, user workload monitoring, our ipsec-nas metrics and alerts, Perses itself.
+No public bug found (searched 2026-10-03).

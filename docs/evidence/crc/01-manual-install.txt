@@ -1,0 +1,113 @@
+# CRC 4.22.7: Cluster Observability Operator installed by hand, Manual approval, to learn what a chart must automate.
+# Started 2026-10-03T21:11:04Z
+
+$ oc get crd -o name | grep -c -E "rhobs|perses|observability.openshift.io"   # before
+0
+$ oc get ns openshift-cluster-observability-operator   # before
+NAME                                       STATUS   AGE
+openshift-cluster-observability-operator   Active   24s
+
+$ oc apply -f coo-manual.yaml
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: openshift-cluster-observability-operator
+      labels:
+        # the CSV's operatorframework.io/cluster-monitoring annotation: platform monitoring scrapes the operator
+        openshift.io/cluster-monitoring: "true"
+    ---
+    # COO supports AllNamespaces only: an OperatorGroup with no targetNamespaces
+    apiVersion: operators.coreos.com/v1
+    kind: OperatorGroup
+    metadata:
+      name: cluster-observability-operator
+      namespace: openshift-cluster-observability-operator
+    spec: {}
+    ---
+    apiVersion: operators.coreos.com/v1alpha1
+    kind: Subscription
+    metadata:
+      name: cluster-observability-operator
+      namespace: openshift-cluster-observability-operator
+    spec:
+      channel: stable
+      installPlanApproval: Manual
+      name: cluster-observability-operator
+      source: redhat-operators
+      sourceNamespace: openshift-marketplace
+namespace/openshift-cluster-observability-operator unchanged
+operatorgroup.operators.coreos.com/cluster-observability-operator unchanged
+subscription.operators.coreos.com/cluster-observability-operator unchanged
+applied at 21:11:06Z
+
+# NOTE: the objects already existed (created ~21:10:40Z by an interrupted earlier run of the same apply); nothing was approved.
+# 21:11:17Z state:
+$ oc -n openshift-cluster-observability-operator get ns,operatorgroup,subscription -o wide
+openshift-cluster-observability-operator created=2026-10-03T21:10:42Z labels={"kubernetes.io/metadata.name":"openshift-cluster-observability-operator","openshift.io/cluster-monitoring":"true"}
+operatorgroup targets=[""] created=2026-10-03T21:10:42Z
+subscription state=UpgradePending installPlanRef=install-mrfrp currentCSV=cluster-observability-operator.v1.5.3 installedCSV=
+$ oc -n openshift-cluster-observability-operator get installplan -o custom-columns=...
+NAME            PHASE              APPROVED   CSV
+install-mrfrp   RequiresApproval   false      cluster-observability-operator.v1.5.3
+$ oc -n openshift-cluster-observability-operator get csv,deploy,pods
+NAME                                                                                 DISPLAY                                       VERSION               RELEASE   REPLACES                                  PHASE
+clusterserviceversion.operators.coreos.com/cert-manager-operator.v1.20.0             cert-manager Operator for Red Hat OpenShift   1.20.0                          cert-manager-operator.v1.19.0             Succeeded
+clusterserviceversion.operators.coreos.com/custom-metrics-autoscaler.v2.19.0-4       Custom Metrics Autoscaler                     2.19.0-4                        custom-metrics-autoscaler.v2.19.0-3       Succeeded
+clusterserviceversion.operators.coreos.com/metallb-operator.v4.22.0-202609221726     MetalLB Operator                              4.22.0-202609221726             metallb-operator.v4.22.0-202609151747     Succeeded
+clusterserviceversion.operators.coreos.com/namespace-configuration-operator.v1.2.6   Namespace Configuration Operator              1.2.6                           namespace-configuration-operator.v1.2.5   Succeeded
+clusterserviceversion.operators.coreos.com/openshift-gitops-operator.v1.21.4         Red Hat OpenShift GitOps                      1.21.4                          openshift-gitops-operator.v1.21.3         Succeeded
+
+# Approve the plan by hand (its CSV list was checked: only cluster-observability-operator.v1.5.3)
+$ oc -n openshift-cluster-observability-operator patch installplan install-mrfrp --type merge -p '{"spec":{"approved":true}}'
+installplan.operators.coreos.com/install-mrfrp patched
+approved at 21:11:42Z
+
+# timings from approval: plan Complete +25s, CSV Succeeded +25s, all Deployments Available +26s
+$ oc -n openshift-cluster-observability-operator get subscription cluster-observability-operator -o jsonpath=state/installedCSV
+AtLatestKnown cluster-observability-operator.v1.5.3
+$ oc -n openshift-cluster-observability-operator get csv cluster-observability-operator.v1.5.3
+NAME                                    DISPLAY                          VERSION   RELEASE   REPLACES                                PHASE
+cluster-observability-operator.v1.5.3   Cluster Observability Operator   1.5.3               cluster-observability-operator.v1.5.2   Succeeded
+$ oc -n openshift-cluster-observability-operator get deploy,pods -o wide
+NAME                                        READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS                              IMAGES                                                                                                                                                                      SELECTOR
+obo-prometheus-operator                     1/1     1            1           19s   prometheus-operator                     registry.redhat.io/cluster-observability-operator/obo-prometheus-rhel9-operator@sha256:35f39365c757bfe3d9ddb5fd01dff490f69a76787b46e189e4ce3265e3678b1e                     app.kubernetes.io/component=controller,app.kubernetes.io/name=prometheus-operator,app.kubernetes.io/part-of=observability-operator
+obo-prometheus-operator-admission-webhook   2/2     2            2           19s   prometheus-operator-admission-webhook   registry.redhat.io/cluster-observability-operator/obo-prometheus-operator-admission-webhook-rhel9@sha256:478cda6416bb7b3b1fdff06aa1777307542bdba52de97aee8edfdee66c1bf204   app.kubernetes.io/name=prometheus-operator-admission-webhook,app.kubernetes.io/part-of=observability-operator
+observability-operator                      1/1     1            1           19s   operator                                registry.redhat.io/cluster-observability-operator/cluster-observability-rhel9-operator@sha256:6ebf4181b2e390084f524e7e04a7dda92d28ed446c4cdd47af333325f11f4f47              app.kubernetes.io/component=operator,app.kubernetes.io/name=observability-operator
+perses-operator                             1/1     1            1           18s   perses-operator                         registry.redhat.io/cluster-observability-operator/perses-rhel9-operator@sha256:076c0402447aa8520ba663068b5cbe0f9e02aacda03aa9df095f72f73fce5a25                             app.kubernetes.io/component=controller,app.kubernetes.io/name=perses-operator,app.kubernetes.io/part-of=observability-operator
+NAME                                                        READY  STATUS   RESTARTS  AGE  NODE
+obo-prometheus-operator-6ddb664c4f-kvvx7                    1/1    Running  0         19s  crc
+obo-prometheus-operator-admission-webhook-65f6cd89f4-g8xjj  1/1    Running  0         19s  crc
+obo-prometheus-operator-admission-webhook-65f6cd89f4-pzfrw  1/1    Running  0         19s  crc
+observability-operator-599c6f89d-m5z9s                      1/1    Running  0         19s  crc
+perses-operator-7d5f5d87c7-qxt9f                            1/1    Running  0         18s  crc
+
+# ---- What the install added (snapshot of cluster-scoped kinds + the two monitoring namespaces, before vs after)
+added: 125, removed: 0
+   5 apiservice.apiregistration.k8s.io
+  94 clusterrole.rbac.authorization.k8s.io
+   6 clusterrolebinding.rbac.authorization.k8s.io
+  18 customresourcedefinition.apiextensions.k8s.io
+   2 validatingwebhookconfiguration.admissionregistration.k8s.io
+changed in openshift-monitoring, openshift-user-workload-monitoring, console plugins: 0
+CRDs:
+  alertmanagerconfigs.monitoring.rhobs
+  alertmanagers.monitoring.rhobs
+  monitoringstacks.monitoring.rhobs
+  observabilityinstallers.observability.openshift.io
+  perses.perses.dev
+  persesdashboards.perses.dev
+  persesdatasources.perses.dev
+  persesglobaldatasources.perses.dev
+  podmonitors.monitoring.rhobs
+  probes.monitoring.rhobs
+  prometheusagents.monitoring.rhobs
+  prometheuses.monitoring.rhobs
+  prometheusrules.monitoring.rhobs
+  scrapeconfigs.monitoring.rhobs
+  servicemonitors.monitoring.rhobs
+  thanosqueriers.monitoring.rhobs
+  thanosrulers.monitoring.rhobs
+  uiplugins.observability.openshift.io
+validating webhooks:
+  alertmanagerconfigs.monitoring.rhobs-8qrff
+  prometheusrules.monitoring.rhobs-dltm2
