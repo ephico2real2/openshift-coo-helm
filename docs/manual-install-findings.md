@@ -148,7 +148,7 @@ spec:
 
 What follows for teams' dashboards:
 - **No shared credential exists anywhere.** Every viewer sees exactly what OpenShift lets them see.
-- **A team whose readers have only `view` needs a `PersesDatasource` in its own namespace** on Thanos **9092** with `queryParams: {namespace: <ns>}`. A 9091 datasource works only for holders of `cluster-monitoring-view`.
+- **A 9091 datasource works only for holders of `cluster-monitoring-view`.** These `GET` queries suggested a 9092 datasource with `queryParams: {namespace: <ns>}` for readers with only `view`; the Perses UI's `POST` queries ruled it out. **Dashboards use 9091**: decision 6a.
 - **Platform metrics** (for example `node_nfs_requests_total`) are not visible through a namespace.
 - **A datasource must name the Perses secret the operator derives from `client.tls`** (`<datasource>-secret`) in `proxy.spec.secret`. Without it: `x509: certificate signed by unknown authority`.
 - **A namespace becomes a Perses project** as soon as a Perses resource exists in it.
