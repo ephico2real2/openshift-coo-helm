@@ -23,7 +23,7 @@ grep -c 'Migration from Grafana not supported' dashboard.perses.json   # must pr
 
 ## What `percli` gets wrong, and the fix
 
-Measured with `percli` 0.54.0 on the ipsec dashboard ([evidence 08](evidence/crc/08-percli-conversion.txt), [openshift-ipsec-nas doc 61, appendix A](https://github.com/ephico2real2/openshift-ipsec-nas/blob/main/docs/61-perses-dashboard-review.md#appendix-a--how-we-got-here)):
+Measured with `percli` 0.54.0 on the ipsec dashboard ([evidence 08](evidence/crc/08-percli-conversion.txt), [openshift-ipsec-nas doc 61, appendix A](https://github.com/ephico2real2/openshift-ipsec-nas/blob/main/docs/61-perses-dashboard-review.md#appendix-a--how-we-got-here), [its evidence 43 on sections](https://github.com/ephico2real2/openshift-ipsec-nas/blob/main/docs/evidence/crc/43-dashboard-sections.txt)):
 
 | What happens | Why | Fix |
 |---|---|---|
@@ -37,6 +37,8 @@ Measured with `percli` 0.54.0 on the ipsec dashboard ([evidence 08](evidence/crc
 | A unit is lost (days) | Not every Grafana unit maps | Set `format.unit`. Perses writes a duration in its **largest fitting unit**: 364 days reads "12.1 months" |
 | The resource comes out as `perses.dev/v1alpha1` | `--format cr` writes v1alpha1, which the API server reports as **deprecated** | Write `v1alpha2`: the dashboard goes under `spec.config` |
 | "No data" where Grafana showed a custom no-value text | Not converted | Accept it, or explain it in the panel's description |
+| The whole dashboard sits under one heading, **"Panel Group 1"** | A Grafana dashboard without rows becomes one Perses section, and `percli` titles it so | Give the Grafana dashboard **rows**, named after the question each part answers: each row becomes a titled section (a row saved collapsed comes out folded). The ipsec dashboard: *Summary*, *Tunnels per node*, *Checks (all should be 0)*, *Per-node detail*, *History* |
+| A fix script stops finding its panels after a row is added | With rows, `percli` keys panels `<section>_<index>` (`0_3`, `4_1`); without, `0`…`15` | Find panels by **title**, not by key |
 
 **Prefer `percli` over COO's own converter.** COO's Perses converts too (`POST /api/migrate`), and agreed with `percli` on 15 of 16 panels. But it named the table's value columns `Value #A…`, which the table plugin did not render (seen in the upstream Perses 0.54.0 UI), and it dropped value mappings and units.
 
