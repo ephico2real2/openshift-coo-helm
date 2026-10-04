@@ -1,0 +1,78 @@
+# charts/openshift-coo 0.1.0 on CRC 4.22.7 (Kubernetes v1.35.6) with Helm v4.3.0, 2026-10-04 05:01-05:22Z.
+# Release in platform-tools; COO in openshift-cluster-observability-operator. Values: defaults plus
+# metricsAccess.groups={system:authenticated} unless stated. Times are UTC.
+
+## 0. Starting point: no COO
+Namespace, the 18 COO CRDs (and the ClusterRoles they own), COO's 6 Perses team roles and the console's
+monitoring-console-plugin entry removed by hand (05:00:58-05:01:40Z). Snapshot: no COO object left.
+
+## 1. helm install, defaults (05:01:46Z) -> deployed, exit 0, 52 s
+  csv-reclaim 05:02:01  no unowned, unreferenced, non-copy CSV ... nothing could be orphaned, not waiting
+  approver    05:02:07  InstallPlan install-59w69 installs: cluster-observability-operator.v1.5.3 -> approved
+              05:02:19  install-59w69 is Complete
+  wait        05:02:36  ok: CSV Succeeded, UIPlugin Available, monitoring-console-plugin listed, Perses ready,
+                        namespace labelled, Role/RoleBinding openshift-coo-prometheus-k8s
+  Checked independently afterwards:
+    UIPlugin  Reconciled=True Degraded=False Available=True (created 05:01:48Z, before COO ran: the crds/ copy)
+    CSV v1.5.3 Succeeded 05:02:32Z; StatefulSet perses ready=1 (pod Ready 05:02:30Z)
+    CRD uiplugins.observability.openshift.io now labelled olm.managed=true by OLM (it adopted the crds/ copy); 18 COO CRDs
+    Roles prometheus-k8s (COO's) and openshift-coo-prometheus-k8s (the chart's) both present
+    ClusterRoleBinding openshift-coo-cluster-monitoring-view -> Group system:authenticated
+    console.spec.plugins ends with monitoring-console-plugin
+  Platform Prometheus, up{namespace="openshift-cluster-observability-operator"}:
+    05:03:05 0 series (its config, reloaded 05:01:55Z, predates COO's ServiceMonitors)
+    05:03:23 health-analyzer=1;  05:03:38 health-analyzer=1, observability-operator=1  (62 s after the gate passed)
+
+## 2. The OpenShift 4.18 setting: helm upgrade --set uiPlugin.clusterHealthAnalyzer=false (05:03:50Z) -> deployed
+  COO's own Role prometheus-k8s: ABSENT from 05:04:10Z on (the defect: COO deletes it)
+  the chart's Role openshift-coo-prometheus-k8s: present throughout
+  up{...}: observability-operator=1 at every sample 05:04:10-05:06:54Z; health-analyzer dropped out by 05:05:11Z
+  (its Deployment is removed with clusterHealthAnalyzer off, as expected)
+
+## 3. Control: also --set platformScrapeRBAC=false --set wait.waitSeconds=60 (05:07:27Z)
+  helm: Error: UPGRADE FAILED: post-upgrade hooks failed: ... openshift-coo-wait ... Job Failed
+  wait: FAILED: Role and RoleBinding prometheus-k8s for the platform Prometheus: not within 60s. Inspect: ...
+  oc auth can-i --as system:serviceaccount:openshift-monitoring:prometheus-k8s -n <COO ns>:
+    list endpoints: no; list pods: no; list services: no; list endpointslices.discovery.k8s.io: no
+  up{...}: observability-operator=1 still at every sample 05:08:54-05:12:38Z. Prometheus keeps the discovery watch it
+  opened while it was allowed; it loses COO when that watch is re-established or Prometheus restarts (not waited
+  for: CRC's platform Prometheus has no persistent storage, so it was not restarted). On a fresh install COO deleted
+  the grant before Prometheus had ever discovered the namespace, and COO was never scraped (evidence 03).
+
+## 4. Back to the defaults: helm upgrade --reset-values (05:13:33Z) -> deployed (revision 4)
+  can-i list endpoints as prometheus-k8s: yes; Roles prometheus-k8s and openshift-coo-prometheus-k8s present
+
+## 5. Re-run unchanged: helm upgrade --reuse-values (05:14:07Z) -> deployed (revision 5), 19 s
+  approver: cluster-observability-operator.v1.5.3 is the installed CSV; nothing to approve
+  InstallPlans before 1, after 1; snapshot of every COO object before and after: identical
+
+## 6. helm uninstall --wait (05:14:47Z) -> returned in 51 s; namespace gone at 05:15:39Z
+  Gone: the namespace and everything in it (Subscription, CSV, operator, Perses, UIPlugin's objects), the UIPlugin,
+        the chart's ClusterRoleBindings openshift-coo-cluster-monitoring-view and openshift-coo-wait
+  Left: the 18 CRDs and their 5 APIServices; 90 ClusterRoles (the per-kind roles the CRDs own, and COO's 6 Perses
+        team roles persesdashboard-editor-role ... persesglobaldatasource-viewer-role, which nothing owns);
+        console.spec.plugins entry monitoring-console-plugin (its ConsolePlugin is gone);
+        applications' Perses CRs (kcs-ipsec PersesDashboard ipsec-nas, PersesDatasource ipsec-nas-thanos)
+
+## 7. Pinned upgrade
+  helm install --set operator.version=1.5.2 (05:16:01Z) -> deployed, 72 s
+    approver: InstallPlan install-l2v75 installs: cluster-observability-operator.v1.5.2 -> approved -> Complete 05:17:04
+    wait 05:17:10: ready (v1.5.2)
+    05:17:40 Subscription: UpgradePending installed=v1.5.2 current=v1.5.3; install-rzsdz RequiresApproval [v1.5.3]
+  helm upgrade --reuse-values (pin unchanged), 05:17:53Z -> deployed
+    approver: cluster-observability-operator.v1.5.2 is the installed CSV; nothing to approve
+              InstallPlan install-rzsdz (cluster-observability-operator.v1.5.3) is not operator.version: left for a human
+    install-rzsdz approved=false phase=RequiresApproval; installed v1.5.2
+  helm upgrade --set operator.version=1.5.3, 05:18:10Z -> deployed, 70 s
+    approver: install-rzsdz installs v1.5.3 -> approved 05:18:20 -> Complete 05:18:37
+    wait: "waiting: COO's CSV Succeeded" 05:18:46-05:19:07 (the Subscription already named v1.5.3), ready 05:19:17
+    CSVs: cluster-observability-operator.v1.5.3 Succeeded (v1.5.2 replaced)
+
+## 8. Reinstall over a left-over CSV: namespace.create=false (namespace and OperatorGroup made beforehand)
+  helm install (05:20:17Z) -> deployed; wait ready 05:21:01
+  helm uninstall (05:21:06Z): the namespace stays; Subscription gone; CSV v1.5.3 left Succeeded, no owner
+  helm install again (05:21:17Z) -> deployed, 60 s, no human step:
+    csv-reclaim 05:21:23 possible orphan present (cluster-observability-operator.v1.5.3); confirming with OLM
+                05:21:24 Subscription reports ResolutionFailed -> ORPHANED (no owner, unreferenced, not a copy) -> deleted
+    approver    05:21:35 InstallPlan install-gpwfj installs v1.5.3 -> approved -> Complete 05:21:53
+    wait        05:22:15 ready

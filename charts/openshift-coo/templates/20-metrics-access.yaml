@@ -1,0 +1,24 @@
+{{- /*
+Metrics access for dashboard viewers (decision: docs/manual-install-findings.md section 6a). The Perses UI sends
+its queries as POST; Thanos Querier's port 9091 checks a POST as create on prometheuses/api, which
+cluster-monitoring-view grants: get on namespaces and get/create/update on prometheuses/api, read access to
+metrics only. One binding for the groups listed; none listed, none rendered.
+*/ -}}
+{{- with .Values.metricsAccess.groups }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshift-coo.fullname" $ }}-cluster-monitoring-view
+  labels:
+    {{- include "openshift-coo.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+  {{- range . }}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ . | quote }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,21 @@
+{{- /*
+Manual approval: OLM stages an InstallPlan and installs nothing until it is approved. The approver Job approves
+the plan for operator.version only, so a newer version OLM stages later waits for a human (or a change of
+operator.version). startingCSV makes the first install that version rather than the channel's head.
+*/ -}}
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .Values.operator.package }}
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  channel: {{ .Values.operator.channel | quote }}
+  installPlanApproval: Manual
+  name: {{ .Values.operator.package }}
+  source: {{ .Values.operator.source }}
+  sourceNamespace: {{ .Values.operator.sourceNamespace }}
+  startingCSV: {{ include "openshift-coo.csv" . }}

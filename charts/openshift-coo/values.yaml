@@ -1,0 +1,80 @@
+# openshift-coo: Red Hat's Cluster Observability Operator (COO) with Perses, hands-free.
+# Every choice below is measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3:
+# docs/manual-install-findings.md and docs/evidence/crc/.
+#
+# WHERE THE RELEASE LIVES. The chart creates COO's namespace itself (namespace.create), with the label the
+# platform needs to scrape COO, so Helm's record of the release cannot live in it: install the release into a
+# namespace that already exists, for example
+#   helm install openshift-coo charts/openshift-coo -n platform-tools --create-namespace
+# Argo CD keeps no record in the cluster: point the Application at COO's namespace, without CreateNamespace.
+
+# COO's namespace. COO supports one install mode, AllNamespaces, so there is one COO per cluster.
+namespace:
+  name: openshift-cluster-observability-operator
+  # true: the chart creates it with openshift.io/cluster-monitoring: "true", so the platform Prometheus scrapes
+  # COO (COO's CSV asks for it). `helm uninstall` then deletes the namespace, which removes the operator and its
+  # CSV with it (OLM leaves a CSV behind when only the Subscription is deleted).
+  # false: the namespace already exists, carries that label, and holds no other OperatorGroup.
+  create: true
+
+operator:
+  # The COO version to install, and the ONLY version the approver approves. A newer version that OLM stages
+  # waits for a human; to upgrade, change this and upgrade the release (measured: 1.5.2 -> 1.5.3 in 47 s).
+  version: "1.5.3"
+  channel: stable
+  # The package as the catalog names it: the Subscription's spec.name and the prefix of every CSV name.
+  package: cluster-observability-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+
+# Approves the InstallPlan of operator.version only, after checking the plan's CSV list names exactly
+# <package>.v<version>. OLM's copies of other operators' CSVs (they appear in every namespace) are never matched.
+installPlanApprover:
+  waitSeconds: 300
+
+# Clears a CSV that a previous uninstall left behind with no Subscription: the case that blocks a reinstall
+# (measured: ResolutionFailed within 20 s, no InstallPlan in 2 minutes; deleting the CSV staged one in 5 s).
+# It deletes only an unowned, unreferenced, settled CSV of this package, and only after OLM reports
+# ResolutionFailed. With namespace.create the uninstall deletes the CSV anyway; this covers namespace.create=false.
+csvReclaim:
+  enabled: true
+  waitSeconds: 120
+
+# The monitoring UIPlugin: it runs the Perses server and adds Observe -> Dashboards (Perses) to the console.
+uiPlugin:
+  perses: true
+  # Incident detection (health-analyzer). Red Hat lists it as GA on OpenShift 4.19 and later; this chart supports
+  # 4.18, so on 4.18 set it false. Off is safe here only because of platformScrapeRBAC below: with Perses on and
+  # this off, COO deletes its own scrape grant (README, Known issues).
+  clusterHealthAnalyzer: true
+
+# The chart's own grant for the platform Prometheus to scrape COO: COO's Role and RoleBinding of the same rules,
+# named prometheus-k8s, are deleted by COO itself in two measured cases (the UIPlugin with clusterHealthAnalyzer
+# off, and the UIPlugin's deletion). This pair carries the chart's name, so COO never deletes it, and COO stays
+# scraped whatever clusterHealthAnalyzer is. Keep it on (README, Known issues).
+platformScrapeRBAC: true
+
+# Who may see the metrics behind application dashboards. Dashboards query Thanos Querier's port 9091, which
+# checks cluster-monitoring-view (decision: docs/manual-install-findings.md section 6a). Each group listed is
+# bound to that ClusterRole, which grants read access to metrics and nothing else; for example
+# system:authenticated, everyone who can log in. Empty: nothing is bound.
+metricsAccess:
+  groups: []
+
+# The post-install gate: returns when COO's CSV is Succeeded, the UIPlugin is Available, the console lists the
+# plugin, Perses is ready, and COO's self-monitoring RBAC exists; otherwise it fails and says which.
+# Helm waits for hooks only up to its --timeout (default 5m): pass --timeout 15m.
+wait:
+  waitSeconds: 600
+  intervalSeconds: 10
+
+# The image of the three Jobs (reclaim, approver, gate): a shell and oc.
+jobs:
+  image:
+    repository: registry.redhat.io/openshift4/ose-cli
+    tag: latest
+  # A namespace whose ResourceQuota requires requests refuses a pod without them.
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  ttlSecondsAfterFinished: 600

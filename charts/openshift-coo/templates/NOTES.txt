@@ -1,0 +1,19 @@
+COO {{ .Values.operator.version }} in {{ include "openshift-coo.namespace" . }}, with the monitoring UIPlugin (Perses: {{ .Values.uiPlugin.perses }}, incident detection: {{ .Values.uiPlugin.clusterHealthAnalyzer }}).
+
+  The gate's verdict:  oc logs -n {{ include "openshift-coo.namespace" . }} job/{{ include "openshift-coo.fullname" . }}-wait
+  Dashboards:          the console, Observe -> Dashboards (Perses)
+  The operator:        oc get subscription,installplan,csv -n {{ include "openshift-coo.namespace" . }}
+{{- if .Values.metricsAccess.groups }}
+
+Metrics access: cluster-monitoring-view is bound to {{ join ", " .Values.metricsAccess.groups }}, so viewers in those groups see the data
+behind every application's Perses dashboard (Thanos Querier, port 9091).
+{{- else }}
+
+Metrics access: metricsAccess.groups is empty, so dashboard viewers see no data unless they hold
+cluster-monitoring-view another way. Example: --set 'metricsAccess.groups={system:authenticated}'
+{{- end }}
+
+Upgrades: only COO {{ .Values.operator.version }} is approved. A newer version OLM stages waits; to take it, set
+operator.version and upgrade this release.
+
+Each application ships its own PersesDashboard and PersesDatasource in its namespace; see the chart README.

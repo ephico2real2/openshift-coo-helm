@@ -1,0 +1,47 @@
+{{- /*
+Lets the platform Prometheus discover and scrape COO, independently of COO's own copy of this grant.
+
+COO creates a Role and RoleBinding named prometheus-k8s in its namespace for this. With the UIPlugin's Perses on
+and clusterHealthAnalyzer off, every UIPlugin reconcile deletes them (COO defect: the health analyzer registers
+objects of the same names as optional; docs/manual-install-findings.md section 5), and deleting the UIPlugin
+deletes them too (evidence 10, step 1). Then COO's metrics and alerts are gone. This pair has the same rules
+under the chart's own name, which COO never touches; with it, scraping does not depend on clusterHealthAnalyzer,
+an incident-detection setting Red Hat lists as GA from OpenShift 4.19.
+*/ -}}
+{{- if .Values.platformScrapeRBAC }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-prometheus-k8s
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+rules:
+  # The rules of COO's own prometheus-k8s Role (COO 1.5.3), read from the cluster.
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-prometheus-k8s
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "openshift-coo.fullname" . }}-prometheus-k8s
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-k8s
+    namespace: openshift-monitoring
+{{- end }}

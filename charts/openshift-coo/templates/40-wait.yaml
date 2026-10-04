@@ -1,0 +1,184 @@
+{{- /*
+The gate: `helm install` returns a working COO or fails naming what is missing. A Job in the main manifest is
+not waited on; a post-install hook is. Argo CD runs it as a Sync hook in the last wave.
+
+It checks, in order, what was measured to matter (docs/evidence/crc/10-...):
+- the CSV phase, not the Subscription: after an approval the Subscription read AtLatestKnown while the CSV was
+  still Pending;
+- the UIPlugin's Available condition, the console's plugin list, and Perses ready;
+- the namespace label and a grant for the platform Prometheus, without which COO is not scraped.
+*/ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+rules:
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["subscriptions", "clusterserviceversions"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "openshift-coo.fullname" . }}-wait
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshift-coo.fullname" . }}-wait
+    namespace: {{ include "openshift-coo.namespace" . }}
+---
+# Read-only, and only the three cluster-scoped objects the gate checks, by name.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+rules:
+  - apiGroups: ["observability.openshift.io"]
+    resources: ["uiplugins"]
+    resourceNames: ["monitoring"]
+    verbs: ["get"]
+  - apiGroups: ["operator.openshift.io"]
+    resources: ["consoles"]
+    resourceNames: ["cluster"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    resourceNames: [{{ include "openshift-coo.namespace" . | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openshift-coo.fullname" . }}-wait
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshift-coo.fullname" . }}-wait
+    namespace: {{ include "openshift-coo.namespace" . }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "openshift-coo.fullname" . }}-wait
+  namespace: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ add .Values.wait.waitSeconds 120 }}
+  ttlSecondsAfterFinished: {{ .Values.jobs.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "openshift-coo.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openshift-coo.fullname" . }}-wait
+      {{- include "openshift-coo.jobPod" . | nindent 6 }}
+      containers:
+        - name: wait
+          {{- include "openshift-coo.jobContainer" . | nindent 10 }}
+          env:
+            - name: NAMESPACE
+              value: {{ include "openshift-coo.namespace" . | quote }}
+            - name: SUBSCRIPTION
+              value: {{ .Values.operator.package | quote }}
+            - name: TARGET
+              value: {{ include "openshift-coo.csv" . | quote }}
+            - name: PERSES
+              value: {{ .Values.uiPlugin.perses | quote }}
+            - name: SCRAPE_ROLE
+              value: {{ ternary (printf "%s-prometheus-k8s" (include "openshift-coo.fullname" .)) "prometheus-k8s" .Values.platformScrapeRBAC | quote }}
+            - name: WAIT_SECONDS
+              value: {{ .Values.wait.waitSeconds | quote }}
+            - name: INTERVAL
+              value: {{ .Values.wait.intervalSeconds | quote }}
+          args:
+            - |
+              set -uo pipefail
+              log()  { printf '[wait %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+              fail() { printf '[wait] FAILED: %s\n' "$*" >&2; exit 1; }
+              DEADLINE=$(( $(date +%s) + WAIT_SECONDS ))
+              left() { echo $(( DEADLINE - $(date +%s) )); }
+              # until_ok <what> <inspect command> <test...>: polls the test until it passes or the budget runs out.
+              until_ok() {
+                local what="$1" inspect="$2"; shift 2
+                while ! "$@"; do
+                  [ "$(left)" -le 0 ] && fail "${what}: not within ${WAIT_SECONDS}s. Inspect: ${inspect}"
+                  log "waiting: ${what} ($(left)s left)"
+                  sleep "$INTERVAL"
+                done
+                log "ok: ${what}"
+              }
+
+              # 1. The operator. The installed CSV's phase, not the Subscription's state.
+              csv_ok() {
+                INSTALLED="$(oc get subscriptions.operators.coreos.com "$SUBSCRIPTION" -n "$NAMESPACE" -o jsonpath='{.status.installedCSV}' 2>/dev/null)"
+                [ -n "$INSTALLED" ] && [ "$(oc get clusterserviceversions.operators.coreos.com "$INSTALLED" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null)" = "Succeeded" ]
+              }
+              until_ok "COO's CSV Succeeded" "oc get subscription,installplan,csv -n ${NAMESPACE}" csv_ok
+              [ "$INSTALLED" = "$TARGET" ] || log "note: ${INSTALLED} is installed, operator.version names ${TARGET} (approved by hand?)"
+
+              # 2. The UIPlugin and what it brings.
+              ui_ok() { [ "$(oc get uiplugins.observability.openshift.io monitoring -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null)" = "True" ]; }
+              until_ok "UIPlugin monitoring Available" "oc get uiplugin monitoring -o yaml" ui_ok
+              plugin_ok() { oc get consoles.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null | grep -q '"monitoring-console-plugin"'; }
+              until_ok "monitoring-console-plugin in the console's plugins" "oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}'" plugin_ok
+              if [ "$PERSES" = "true" ]; then
+                perses_ok() { [ "$(oc get statefulset perses -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
+                until_ok "Perses ready" "oc get statefulset perses -n ${NAMESPACE}; oc get perses -n ${NAMESPACE} -o yaml" perses_ok
+              fi
+
+              # 3. The platform can scrape COO: the namespace label and a grant for openshift-monitoring/prometheus-k8s.
+              label_ok() { [ "$(oc get namespace "$NAMESPACE" -o jsonpath='{.metadata.labels.openshift\.io/cluster-monitoring}' 2>/dev/null)" = "true" ]; }
+              until_ok "namespace ${NAMESPACE} labelled openshift.io/cluster-monitoring=true" "oc get namespace ${NAMESPACE} --show-labels" label_ok
+              scrape_ok() { oc get role "$SCRAPE_ROLE" -n "$NAMESPACE" >/dev/null 2>&1 && oc get rolebinding "$SCRAPE_ROLE" -n "$NAMESPACE" >/dev/null 2>&1; }
+              until_ok "Role and RoleBinding ${SCRAPE_ROLE} for the platform Prometheus" "oc get role,rolebinding -n ${NAMESPACE}; see the chart README, Known issues" scrape_ok
+
+              log "COO ${INSTALLED} is ready: Observe -> Dashboards (Perses) in the console"

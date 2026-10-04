@@ -1,0 +1,23 @@
+{{- /*
+The monitoring UIPlugin: COO runs the Perses server (StatefulSet perses) and the console plugin
+monitoring-console-plugin, and appends the plugin to the console's list itself (measured: no Job needed).
+Its CRD ships in crds/ so `helm install` can create it before OLM has installed COO; Argo CD applies it in a
+wave after the approver, with the dry run skipped while the CRD is still missing.
+The CRD requires the name: "UIPlugin name must be 'monitoring' if type is Monitoring", so one per cluster.
+*/ -}}
+apiVersion: observability.openshift.io/v1alpha1
+kind: UIPlugin
+metadata:
+  name: monitoring
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  type: Monitoring
+  monitoring:
+    perses:
+      enabled: {{ .Values.uiPlugin.perses }}
+    clusterHealthAnalyzer:
+      enabled: {{ .Values.uiPlugin.clusterHealthAnalyzer }}

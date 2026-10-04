@@ -1,0 +1,15 @@
+{{- /*
+COO's namespace, labelled so the platform Prometheus scrapes COO (its CSV's operatorframework.io/cluster-monitoring
+annotation asks for it). Wave -3 under Argo CD: everything else lives in it.
+*/ -}}
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "openshift-coo.namespace" . }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+    openshift.io/cluster-monitoring: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+{{- end }}

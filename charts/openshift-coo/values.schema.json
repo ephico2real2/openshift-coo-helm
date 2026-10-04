@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "namespace": {
+      "type": "object", "additionalProperties": false, "required": ["name", "create"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"},
+        "create": {"type": "boolean"}
+      }
+    },
+    "operator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "channel", "package", "source", "sourceNamespace"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+                    "description": "The COO version, without the v: 1.5.3"},
+        "channel": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "sourceNamespace": {"type": "string", "minLength": 1}
+      }
+    },
+    "installPlanApprover": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"waitSeconds": {"type": "integer", "minimum": 30}}
+    },
+    "csvReclaim": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"enabled": {"type": "boolean"}, "waitSeconds": {"type": "integer", "minimum": 10}}
+    },
+    "uiPlugin": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"perses": {"type": "boolean"}, "clusterHealthAnalyzer": {"type": "boolean"}}
+    },
+    "platformScrapeRBAC": {"type": "boolean"},
+    "metricsAccess": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"groups": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}}
+    },
+    "wait": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"waitSeconds": {"type": "integer", "minimum": 60}, "intervalSeconds": {"type": "integer", "minimum": 1}}
+    },
+    "jobs": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "image": {"type": "object", "additionalProperties": false, "required": ["repository", "tag"],
+                  "properties": {"repository": {"type": "string", "minLength": 1}, "tag": {"type": "string", "minLength": 1}}},
+        "resources": {"type": "object"},
+        "ttlSecondsAfterFinished": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,119 @@
+# COO lifecycle by hand on CRC 4.22.7 (Kubernetes v1.35.6), 2026-10-04 04:42-04:52Z. COO 1.5.3 installed as in evidence 01/02/06.
+# Snapshot script: lists, per step, the cluster-scoped objects, the console's plugin list, COO's namespace, the two
+# openshift-monitoring RBAC objects COO adds, and every Perses CR. GONE/NEW = the diff from the previous step.
+# (Two CRC objects, machinehealthchecks CRD and crc-csi-hostpathplugin-health-monitor-controller-cluster-role, match the
+#  name filter and are not COO's; they never change below.)
+
+## 1. Delete the UIPlugin (no finalizers): oc delete uiplugin monitoring -> returned at once (04:43:11Z); snapshot +20 s
+  GONE  cluster clusterrole.rbac.authorization.k8s.io/components-health-view
+  GONE  cluster clusterrole.rbac.authorization.k8s.io/perses-cr
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/monitoring-components-health-view
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/perses-sa-perses-cr
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/perses-sa-system-auth-delegator
+  GONE  cluster consoleplugin.console.openshift.io/monitoring-console-plugin
+  GONE  cluster uiplugin.observability.openshift.io/monitoring
+  GONE  openshift-cluster-observability-operator configmap/components-config
+  GONE  openshift-cluster-observability-operator configmap/perses-config
+  GONE  openshift-cluster-observability-operator deployment.apps/health-analyzer
+  GONE  openshift-cluster-observability-operator deployment.apps/monitoring
+  GONE  openshift-cluster-observability-operator perses.perses.dev/perses
+  GONE  openshift-cluster-observability-operator persesdatasource.perses.dev/accelerators-thanos-querier-datasource
+  GONE  openshift-cluster-observability-operator role.rbac.authorization.k8s.io/prometheus-k8s
+  GONE  openshift-cluster-observability-operator rolebinding.rbac.authorization.k8s.io/prometheus-k8s
+  GONE  openshift-cluster-observability-operator service/health-analyzer
+  GONE  openshift-cluster-observability-operator service/monitoring
+  GONE  openshift-cluster-observability-operator service/perses
+  GONE  openshift-cluster-observability-operator serviceaccount/monitoring-sa
+  GONE  openshift-cluster-observability-operator serviceaccount/perses-sa
+  GONE  openshift-cluster-observability-operator servicemonitor.monitoring.coreos.com/health-analyzer
+  GONE  openshift-cluster-observability-operator statefulset.apps/perses
+  GONE  openshift-monitoring rolebinding.rbac.authorization.k8s.io/alertmanager-view-rolebinding
+  (the PersesDashboard/PersesDatasource in kcs-ipsec stay; COO's own accelerators/apm dashboards and datasource go)
+  console.operator.openshift.io/cluster .spec.plugins after: 1 entry 'monitoring-console-plugin' REMAINS, its ConsolePlugin is gone
+  COO's prometheus-k8s Role/RoleBinding (self-monitoring) were deleted with it (the defect of evidence 03) and were still
+  absent 34 s later (04:43:45Z).
+
+## 2. Delete the Subscription only, 04:43:58Z; snapshot +15 s
+#  (A chart owns the Subscription; OLM creates the CSV, so a chart's uninstall removes the first and not the second.)
+  GONE  openshift-cluster-observability-operator installplan.operators.coreos.com/install-mrfrp
+  GONE  openshift-cluster-observability-operator subscription.operators.coreos.com/cluster-observability-operator
+  CSV cluster-observability-operator.v1.5.3: phase=Succeeded, ownerReferences empty; its 4 Deployments keep running.
+
+## 3. Re-create the same Subscription (Manual) over that CSV, 04:44:26Z; polled every 10 s for 124 s
+  +10 s: no condition yet; +20 s .. +124 s: ResolutionFailed=True, installPlanRef empty, installedCSV empty, state empty
+  condition reason: ConstraintsNotSatisfiable; among the constraints it lists, the cause:
+    "clusterserviceversion cluster-observability-operator.v1.5.3 exists and is not referenced by a subscription"
+  No InstallPlan was staged in 124 s.
+
+## 4. Delete that orphaned CSV with the Subscription in place (what a reclaim Job does), 04:46:49Z
+  CSV finalizer: operators.coreos.com/csv-cleanup; deleted with --wait=false.
+  +5 s: ResolutionFailed cleared; installPlanRef=install-75vbd, RequiresApproval, CSVs [cluster-observability-operator.v1.5.3],
+        state UpgradePending; 0 Deployments in the namespace until approved.
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/cluster-observability-op-1yVqXNrEkEodlqy7YmpiJUWamsMx7Pp68W1h50
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/cluster-observability-op-2xIZTUNNwV3n0Iab7QWYEgjM15rRn6ISQRORFC
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/cluster-observability-op-61cDV1Bt82y5ZMXJK2kwn8P9tx5hYPhYZqkBOy
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/cluster-observability-op-6gqiymxe4sZi61OLeKS7ZhcY91nTstgN4Oyh6R
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/obo-prometheus-operator-admission-webhook-service-system:auth-delegator
+  GONE  cluster clusterrolebinding.rbac.authorization.k8s.io/perses-operator-service-system:auth-delegator
+  GONE  cluster validatingwebhookconfiguration.admissionregistration.k8s.io/alertmanagerconfigs.monitoring.rhobs-8qrff
+  GONE  cluster validatingwebhookconfiguration.admissionregistration.k8s.io/prometheusrules.monitoring.rhobs-dltm2
+  GONE  openshift-cluster-observability-operator csv/cluster-observability-operator.v1.5.3 phase=Succeeded copiedFrom=
+  GONE  openshift-cluster-observability-operator deployment.apps/obo-prometheus-operator
+  GONE  openshift-cluster-observability-operator deployment.apps/obo-prometheus-operator-admission-webhook
+  GONE  openshift-cluster-observability-operator deployment.apps/observability-operator
+  GONE  openshift-cluster-observability-operator deployment.apps/perses-operator
+  NEW   openshift-cluster-observability-operator installplan.operators.coreos.com/install-75vbd
+  GONE  openshift-cluster-observability-operator prometheusrule.monitoring.coreos.com/observability-operator
+  GONE  openshift-cluster-observability-operator role.rbac.authorization.k8s.io/cluster-observability-operator.v1.5.3
+  GONE  openshift-cluster-observability-operator role.rbac.authorization.k8s.io/obo-prometheus-operator-admission-webhook-service-cert
+  GONE  openshift-cluster-observability-operator role.rbac.authorization.k8s.io/perses-operator-service-cert
+  GONE  openshift-cluster-observability-operator rolebinding.rbac.authorization.k8s.io/cluster-observability-operator.v1.5.3
+  GONE  openshift-cluster-observability-operator rolebinding.rbac.authorization.k8s.io/obo-prometheus-operator-admission-webhook-service-cert
+  GONE  openshift-cluster-observability-operator rolebinding.rbac.authorization.k8s.io/perses-operator-service-cert
+  GONE  openshift-cluster-observability-operator service/obo-prometheus-operator
+  GONE  openshift-cluster-observability-operator service/obo-prometheus-operator-admission-webhook
+  GONE  openshift-cluster-observability-operator service/obo-prometheus-operator-admission-webhook-service
+  GONE  openshift-cluster-observability-operator service/observability-operator
+  GONE  openshift-cluster-observability-operator service/perses-operator-conversion-webhook
+  GONE  openshift-cluster-observability-operator service/perses-operator-service
+  GONE  openshift-cluster-observability-operator serviceaccount/obo-prometheus-operator
+  GONE  openshift-cluster-observability-operator serviceaccount/obo-prometheus-operator-admission-webhook
+  GONE  openshift-cluster-observability-operator serviceaccount/observability-operator-sa
+  GONE  openshift-cluster-observability-operator serviceaccount/perses-operator
+  GONE  openshift-cluster-observability-operator servicemonitor.monitoring.coreos.com/observability-operator
+  NEW   openshift-cluster-observability-operator subscription.operators.coreos.com/cluster-observability-operator
+  plus 4 ClusterRoles GONE (the CSV's own); none added.
+
+## 5. What a full uninstall (UIPlugin, Subscription, CSV) leaves on the cluster
+  CRDs: 18 (all 18 COO CRDs), ClusterRoles: 93 (per-kind admin/edit/view/crdview roles,
+  ownerReference = their CRD, label olm.managed), ClusterRoleBindings of COO: 0, APIServices: 5 (local, the CRDs'), webhooks: 0
+  cluster consoleplugin.console.openshift.io/gitops-plugin
+  cluster consoleplugin.console.openshift.io/monitoring-plugin
+  cluster consoleplugin.console.openshift.io/networking-console-plugin
+  cluster consoleplugin.console.openshift.io/nmstate-console-plugin
+  console.spec.plugins gitops-plugin
+  console.spec.plugins monitoring-console-plugin
+  console.spec.plugins monitoring-plugin
+  console.spec.plugins networking-console-plugin
+  console.spec.plugins nmstate-console-plugin
+  namespace openshift-cluster-observability-operator labels=true
+  openshift-cluster-observability-operator operatorgroup.operators.coreos.com/cluster-observability-operator
+  openshift-cluster-observability-operator serviceaccount/perses
+  perses-cr kcs-ipsec PersesDashboard ipsec-nas <none>
+  perses-cr kcs-ipsec PersesDatasource ipsec-nas-thanos <none>
+  => leftovers: the CRDs (and the roles they own), the namespace with its OperatorGroup, a 'perses' ServiceAccount, the
+     'monitoring-console-plugin' entry in the console's plugin list, and every application's Perses CRs (kept: CRDs stay).
+
+## 6. Install v1.5.2 (startingCSV), approve, then the upgrade to v1.5.3 as Manual approval presents it
+  Subscription created (Manual, startingCSV v1.5.2) -> 19 s later plan install-nw69v RequiresApproval [v1.5.2]
+  04:48:19Z approved -> v1.5.2 Succeeded after 38 s
+  +43 s .. +101 s: state=UpgradePending installedCSV=v1.5.2 currentCSV=v1.5.3 installPlanRef=install-q6mlf
+           install-nw69v Complete true [v1.5.2]; install-q6mlf RequiresApproval false [v1.5.3]   <- waits for a human
+  04:50:19Z approved install-q6mlf:
+    +5 s   Subscription AtLatestKnown installedCSV=v1.5.3 while CSV v1.5.3 Pending, v1.5.2 Replacing  <- Subscription state is NOT readiness
+    +16 s  v1.5.3 Installing; +32 s v1.5.2 gone
+    04:51:06Z v1.5.3 Succeeded (47 s after approval); 4 Deployments ready
+
+## 7. Self-monitoring after the reinstall without a UIPlugin
+  role/rolebinding prometheus-k8s present; servicemonitor and prometheusrule observability-operator present
+  platform Prometheus: up{namespace="openshift-cluster-observability-operator"} -> 2 series, both 1 (job observability-operator)
