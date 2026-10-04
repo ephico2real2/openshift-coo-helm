@@ -1,0 +1,25 @@
+# COO through Argo CD (OpenShift GitOps). The Application points at COO's namespace; the chart creates that
+# namespace itself (wave -3), with the label the platform needs, so no CreateNamespace here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openshift-coo
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ephico2real2/openshift-coo-helm.git
+    targetRevision: main
+    path: charts/openshift-coo
+    helm:
+      # The UIPlugin CRD then comes from OLM, before the UIPlugin's wave. An Argo CD-managed copy would be deleted
+      # with the Application, and every UIPlugin with it.
+      skipCrds: true
+      valuesObject:
+        metricsAccess:
+          groups: [system:authenticated]   # everyone who logs in sees dashboard data (no PHI/PII in metrics)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-cluster-observability-operator
+  syncPolicy:
+    automated: {}
