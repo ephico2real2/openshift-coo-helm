@@ -15,8 +15,8 @@ The operator controller creates a Role and RoleBinding named `prometheus-k8s` in
 Prometheus can discover and scrape the operator. The UIPlugin controller registers objects with the **same names, in the same
 namespace**, for the health analyzer, as *optional*. When a monitoring UIPlugin exists with `clusterHealthAnalyzer` (and
 `incidents`) disabled, each UIPlugin reconcile **deletes** the operator's Role and RoleBinding. After that,
-`openshift-monitoring/prometheus-k8s` may not list endpoints, pods, services or endpointslices in that namespace, and
-the operator is not scraped.
+`openshift-monitoring/prometheus-k8s` may not list endpoints, pods, services or endpointslices in that namespace. On a fresh
+install the operator was then not scraped; an install already being scraped stayed scraped for the 3 min 44 s watched.
 
 ## Environment
 
@@ -85,8 +85,10 @@ So the two controllers manage one object; the UIPlugin controller deletes the op
 ## A similar case, fixed
 
 [PR #931](https://github.com/rhobs/observability-operator/pull/931), "fix: rename clusterrolebinding used for monitoring plugin
-to avoid clash" (merged 2025-11-10, for Red Hat's COO-1314): two controllers created a ClusterRoleBinding of the same name,
-fixed by renaming one. This report is the same kind of clash, on a Role and RoleBinding.
+to avoid clash" (merged into `release-1.3` on 2025-11-10, for Red Hat's COO-1314): the troubleshooting panel's and the incident detection's
+code in the UIPlugin controller each created a ClusterRoleBinding named `cluster-monitoring-view`; the fix renamed the
+incident detection one to `<plugin name>cluster-monitoring-view` (`pkg/controllers/uiplugin/components.go`). This report is
+the same kind of clash, between the operator controller and the UIPlugin controller, on a Role and RoleBinding.
 
 ## Possible fixes (for the maintainers to choose)
 
@@ -99,7 +101,8 @@ fixed by renaming one. This report is the same kind of clash, on a Role and Role
 - Enable `spec.monitoring.clusterHealthAnalyzer` (observed: the Role then survives). Red Hat lists incident detection as GA from
   OpenShift 4.19.
 - Or create a Role and RoleBinding with the same rules under another name; the UIPlugin controller does not touch it. Observed with
-  `clusterHealthAnalyzer` off: the operator's copy deleted, ours present, the operator scraped (`up` = 1) at every sample from 05:04:10 to 05:06:54Z (2 min 44 s).
+  `clusterHealthAnalyzer` off: the operator's copy deleted, ours present, the operator scraped (`up` = 1) at every sample from 05:04:10 to 05:06:54Z (2 min 44 s). Scraping also
+  continued without any grant for the 3 min 44 s watched, so this shows that our copy survives, not that it is needed.
 
 ## Limits of this report
 
@@ -109,8 +112,9 @@ fixed by renaming one. This report is the same kind of clash, on a Role and Role
   verified. The lines are identical on `v1.5.2`, both 1.5 release branches and `main`; on `v1.5.0` and `v1.5.1` the same
   code is there, but `NewOptionalUpdater` is at `pkg/reconciler/reconciler.go:114`, not `:97`.
 - **Also observed:** deleting the UIPlugin (health analyzer on) also removed the operator's `prometheus-k8s` Role and
-  RoleBinding, which were still absent 34 s later. A later read on the cluster shows why: with the health analyzer on, the
-  Role carries `ownerReferences` UIPlugin `monitoring`, `controller: true`, `blockOwnerDeletion: true`, so the garbage
-  collector deletes it with the UIPlugin. That deletion was not re-run after the read.
+  RoleBinding, which were still absent 34 s later. A later read on the cluster (`docs/evidence/crc/12-review-reads.txt`, on a
+  later install, health analyzer on) points to why: the Role and the RoleBinding carry `ownerReferences` UIPlugin
+  `monitoring`, `controller: true`, `blockOwnerDeletion: true`, so the garbage collector deletes them with the UIPlugin.
+  That deletion was not re-run after the read.
 - Searched this repository's issues and pull requests on 2026-10-04 ("prometheus-k8s", "health analyzer RBAC", "self-monitoring
   uiplugin", "clusterHealthAnalyzer"): no report of this found.

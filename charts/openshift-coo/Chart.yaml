@@ -7,7 +7,7 @@ description: >-
   returns only when all of it works.
 type: application
 version: 0.2.0
-# The COO version this chart installs and was measured with; operator.version defaults to it.
+# The COO version this chart installs and was measured with; values.yaml sets operator.version to the same version.
 appVersion: "1.5.3"
 # OpenShift 4.19 (Kubernetes 1.32) or later: Red Hat lists incident detection (the UIPlugin's clusterHealthAnalyzer,
 # on by default here) as GA from 4.19.

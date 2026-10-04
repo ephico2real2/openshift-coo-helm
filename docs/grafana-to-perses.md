@@ -29,7 +29,7 @@ Measured with `percli` 0.54.0 on the ipsec dashboard ([evidence 08](evidence/crc
 |---|---|---|
 | **Every panel becomes a placeholder** reading `Migration from Grafana not supported !`, and `percli` still exits 0 | `--plugin.path` points at the release's packed `plugins-archive/` | Unpack the plugins ([percli.md](percli.md)); refuse any output that still contains a placeholder |
 | A warning `failed query migration: no plugins found matching target`, once per query | — | Harmless: all 27 PromQL expressions came out identical to the Grafana ones (compared, raw output) |
-| The Grafana data-source input `${DS_PROMETHEUS}` becomes a datasource variable, and every query names `${DS_PROMETHEUS}` | Perses has no Grafana inputs; `percli` maps the input to a variable | `--input DS_PROMETHEUS=<your PersesDatasource>`, which names it in every query; or `--use-default-datasource`, then name your `PersesDatasource` on **every query** |
+| The Grafana data-source input `${DS_PROMETHEUS}` becomes a datasource variable, and every query names `${DS_PROMETHEUS}` ([evidence 12](evidence/crc/12-review-reads.txt) section 6) | Perses has no Grafana inputs; `percli` maps the input to a variable | `--input DS_PROMETHEUS=<your PersesDatasource>`, which names it in every query; or `--use-default-datasource`, then name your `PersesDatasource` on **every query** |
 | **The variables (filters) query no data source**: in a namespace without a default data source, a filter sent no request at all | `percli` leaves variables without a data source, so they use the namespace's default one | Name your data source on every **variable** too |
 | **A table shows one entity in several rows** | Perses' table merge (`MergeSeries`) joins series only when their labels are equal. Queries labelled `node, pod` and `node, peer_id` beside queries labelled `node` gave three rows per node | Aggregate every table query `by` the same labels; move extra label columns to a table of their own |
 | A table's value columns are named `value #1`, `value #2`, … | By query number | Renumber the column settings if you remove or reorder queries |
@@ -93,7 +93,7 @@ What each choice is, measured ([manual-install findings](manual-install-findings
 
 | To | A viewer needs |
 |---|---|
-| Open the dashboard | `view` in the application's namespace. OLM aggregates the per-kind roles of COO's Perses CRDs into `view`, `edit` and `admin` (for example `persesdashboards.perses.dev-v1alpha2-view`, labelled `rbac.authorization.k8s.io/aggregate-to-view`; COO's six `perses*-viewer/editor-role` roles are not aggregated). Measured: `view` alone reads the dashboard, and cannot change it. So the application ships **no RoleBindings** |
+| Open the dashboard | `view` in the application's namespace. OLM aggregates the per-kind roles of COO's Perses CRDs into `view`, `edit` and `admin` (for example `persesdashboards.perses.dev-v1alpha2-view`, labelled `rbac.authorization.k8s.io/aggregate-to-view`; COO's six `perses*-viewer/editor-role` roles are not aggregated: [evidence 12](evidence/crc/12-review-reads.txt) section 3). Measured: `view` alone reads the dashboard, and cannot change it. So the application ships **no RoleBindings** |
 | See its data | `cluster-monitoring-view`, a platform grant |
 
 ## Verify it

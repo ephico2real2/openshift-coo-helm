@@ -8,7 +8,7 @@ The script is the openshift-grafana chart's csv-reclaim (group-sync-dashboard, r
 2026-09-18/19), unchanged. It deletes only a CSV of this package that is not an OLM copy, has no owner, is
 referenced by no Subscription and is settled (Succeeded/Failed), and only after OLM reports ResolutionFailed.
 A clean install pays one list and exits. For COO the no-owner test alone does not tell an orphan: the installed,
-Subscription-referenced CSV has no ownerReferences either (read on CRC: cluster-observability-operator.v1.5.3), so
+Subscription-referenced CSV has no ownerReferences either (docs/evidence/crc/12-review-reads.txt, section 1: cluster-observability-operator.v1.5.3), so
 the script's "an OLM-managed CSV has an owner" does not hold here; the Subscription test is what spares a live CSV.
 
 With namespace.create (the default) `helm uninstall` deletes the namespace and the CSV with it, so this is for

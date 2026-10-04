@@ -13,7 +13,6 @@ Applications consume this platform piece, and keep their own dashboards in their
 
 Before relying on it, read the chart's [Limitations](charts/openshift-coo/README.md#limitations): OpenShift 4.19 or later, tested on one single-node cluster, one COO defect waiting on upstream.
 
-
 ```bash
 helm install openshift-coo charts/openshift-coo -n platform-tools --create-namespace \
   --set 'metricsAccess.groups={system:authenticated}' --timeout 15m

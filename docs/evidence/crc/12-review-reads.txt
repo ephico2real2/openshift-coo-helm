@@ -1,0 +1,82 @@
+# Reads behind the 2026-10-04 review corrections: CRC 4.22.7 (Kubernetes v1.35.6), COO 1.5.3 installed by the
+# openshift-coo chart through Argo CD. Read-only: oc get, and percli run offline. Recorded 2026-10-04T07:47:05Z.
+
+## 1. COO's installed CSV has no ownerReferences, while a Subscription references it
+$ oc --context crc-admin get subscription cluster-observability-operator -n openshift-cluster-observability-operator -o jsonpath='installedCSV={.status.installedCSV} state={.status.state}{"\n"}'
+  installedCSV=cluster-observability-operator.v1.5.3 state=AtLatestKnown
+$ oc --context crc-admin get csv cluster-observability-operator.v1.5.3 -n openshift-cluster-observability-operator -o jsonpath='phase={.status.phase} ownerReferences={.metadata.ownerReferences}{"\n"}'
+  phase=Succeeded ownerReferences=
+
+## 2. Owners of the scrape grants (health analyzer on): COO's prometheus-k8s is owned by the UIPlugin; the chart's has no owner
+$ oc --context crc-admin get role prometheus-k8s openshift-coo-prometheus-k8s -n openshift-cluster-observability-operator -o custom-columns=KIND:.kind,NAME:.metadata.name,OWNER:.metadata.ownerReferences[*].kind,OWNER_NAME:.metadata.ownerReferences[*].name,CONTROLLER:.metadata.ownerReferences[*].controller,BLOCK_OWNER_DELETION:.metadata.ownerReferences[*].blockOwnerDeletion
+  KIND   NAME                           OWNER      OWNER_NAME   CONTROLLER   BLOCK_OWNER_DELETION
+  Role   prometheus-k8s                 UIPlugin   monitoring   true         true
+  Role   openshift-coo-prometheus-k8s   <none>     <none>       <none>       <none>
+$ oc --context crc-admin get rolebinding prometheus-k8s openshift-coo-prometheus-k8s -n openshift-cluster-observability-operator -o custom-columns=KIND:.kind,NAME:.metadata.name,OWNER:.metadata.ownerReferences[*].kind,OWNER_NAME:.metadata.ownerReferences[*].name,CONTROLLER:.metadata.ownerReferences[*].controller,BLOCK_OWNER_DELETION:.metadata.ownerReferences[*].blockOwnerDeletion
+  KIND          NAME                           OWNER      OWNER_NAME   CONTROLLER   BLOCK_OWNER_DELETION
+  RoleBinding   prometheus-k8s                 UIPlugin   monitoring   true         true
+  RoleBinding   openshift-coo-prometheus-k8s   <none>     <none>       <none>       <none>
+$ oc --context crc-admin get role prometheus-k8s -n openshift-cluster-observability-operator -o json --show-managed-fields | python3 -c 'import json,sys; d=json.load(sys.stdin); print([(m["manager"], m["operation"], m.get("time")) for m in d["metadata"]["managedFields"]])'
+  [('observability-operator', 'Apply', '2026-10-04T05:27:53Z')]
+$ oc --context crc-admin get uiplugin monitoring -o jsonpath='UIPlugin created={.metadata.creationTimestamp} spec={.spec.monitoring}{"\n"}'
+  UIPlugin created=2026-10-04T05:27:52Z spec={"clusterHealthAnalyzer":{"enabled":true},"perses":{"enabled":true}}
+
+## 3. view, edit and admin read Perses objects through OLM's per-CRD roles; COO's six team roles are not aggregated
+$ oc --context crc-admin get clusterrole view -o json | python3 -c 'import json,sys; [print("view", x["resources"], x["verbs"]) for x in json.load(sys.stdin)["rules"] if "perses.dev" in (x.get("apiGroups") or [])]'
+  view ['perses'] ['get', 'list', 'watch']
+  view ['persesdashboards'] ['get', 'list', 'watch']
+  view ['persesdatasources'] ['get', 'list', 'watch']
+  view ['persesglobaldatasources'] ['get', 'list', 'watch']
+$ oc --context crc-admin get clusterrole edit -o json | python3 -c 'import json,sys; [print("edit", x["resources"], x["verbs"]) for x in json.load(sys.stdin)["rules"] if "perses.dev" in (x.get("apiGroups") or [])]'
+  edit ['perses'] ['create', 'update', 'patch', 'delete']
+  edit ['persesdashboards'] ['create', 'update', 'patch', 'delete']
+  edit ['persesdatasources'] ['create', 'update', 'patch', 'delete']
+  edit ['persesglobaldatasources'] ['create', 'update', 'patch', 'delete']
+  edit ['perses'] ['get', 'list', 'watch']
+  edit ['persesdashboards'] ['get', 'list', 'watch']
+  edit ['persesdatasources'] ['get', 'list', 'watch']
+  edit ['persesglobaldatasources'] ['get', 'list', 'watch']
+$ oc --context crc-admin get clusterrole admin -o json | python3 -c 'import json,sys; [print("admin", x["resources"], x["verbs"]) for x in json.load(sys.stdin)["rules"] if "perses.dev" in (x.get("apiGroups") or [])]'
+  admin ['perses'] ['create', 'update', 'patch', 'delete']
+  admin ['persesdashboards'] ['create', 'update', 'patch', 'delete']
+  admin ['persesdatasources'] ['create', 'update', 'patch', 'delete']
+  admin ['persesglobaldatasources'] ['create', 'update', 'patch', 'delete']
+  admin ['perses'] ['get', 'list', 'watch']
+  admin ['persesdashboards'] ['get', 'list', 'watch']
+  admin ['persesdatasources'] ['get', 'list', 'watch']
+  admin ['persesglobaldatasources'] ['get', 'list', 'watch']
+  admin ['perses'] ['*']
+  admin ['persesdashboards'] ['*']
+  admin ['persesdatasources'] ['*']
+  admin ['persesglobaldatasources'] ['*']
+$ oc --context crc-admin get clusterrole persesdashboards.perses.dev-v1alpha2-view -o jsonpath='owner={.metadata.ownerReferences[0].kind}/{.metadata.ownerReferences[0].name} aggregate-to-view={.metadata.labels.rbac\.authorization\.k8s\.io/aggregate-to-view}{"\n"}'
+  owner=customresourcedefinition/persesdashboards.perses.dev aggregate-to-view=true
+$ oc --context crc-admin get clusterrole persesdashboard-viewer-role -o jsonpath='ownerReferences={.metadata.ownerReferences} labels={.metadata.labels}{"\n"}'
+  ownerReferences= labels={"app.kubernetes.io/component":"rbac","app.kubernetes.io/created-by":"perses-operator","app.kubernetes.io/instance":"persesdashboard-viewer-role","app.kubernetes.io/name":"clusterrole","app.kubernetes.io/part-of":"perses-operator","olm.managed":"true","olm.owner":"cluster-observability-operator.v1.5.3"}
+
+## 4. cluster-monitoring-view
+$ oc --context crc-admin get clusterrole cluster-monitoring-view -o jsonpath='{.rules}{"\n"}'
+  [{"apiGroups":[""],"resources":["namespaces"],"verbs":["get"]},{"apiGroups":["monitoring.coreos.com"],"resourceNames":["k8s"],"resources":["prometheuses/api"],"verbs":["get","create","update"]}]
+
+## 5. perses.dev/v1alpha1 is served and deprecated
+$ oc --context crc-admin get crd persesdashboards.perses.dev -o jsonpath='{range .spec.versions[*]}{.name} served={.served} storage={.storage} deprecated={.deprecated} {.deprecationWarning}{"\n"}{end}'
+  v1alpha1 served=true storage=false deprecated=true perses.dev/v1alpha1 is deprecated; use perses.dev/v1alpha2
+  v1alpha2 served=true storage=true deprecated=
+
+## 6. percli 0.54.0, offline, on charts/ipsec-nas/files/ipsec-nas.json (openshift-ipsec-nas): the ${DS_PROMETHEUS} input
+$ percli version | sed -n 3p
+      version: 0.54.0
+$ percli migrate -f ipsec-nas.json --format native --plugin.path <unpacked plugins> -o json
+  variables: [('DS_PROMETHEUS', 'DatasourceVariable'), ('node', 'PrometheusLabelValuesVariable')]
+  datasource of the 27 queries: ['{"kind": "PrometheusDatasource", "name": "${DS_PROMETHEUS}"}']
+$ percli migrate -f ipsec-nas.json --format native --plugin.path <unpacked plugins> --use-default-datasource -o json
+  variables: [('DS_PROMETHEUS', 'DatasourceVariable'), ('node', 'PrometheusLabelValuesVariable')]
+  datasource of the 27 queries: ['{"kind": "PrometheusDatasource"}']
+$ percli migrate -f ipsec-nas.json --format native --plugin.path <unpacked plugins> --input DS_PROMETHEUS=ipsec-nas-thanos -o json
+  variables: [('DS_PROMETHEUS', 'DatasourceVariable'), ('node', 'PrometheusLabelValuesVariable')]
+  datasource of the 27 queries: ['{"kind": "PrometheusDatasource", "name": "ipsec-nas-thanos"}']
+$ percli migrate -f ipsec-nas.json --format native --plugin.path <packed plugins-archive> --use-default-datasource -o json
+  panels: {'Markdown': 16}
+  DS_PROMETHEUS: [{'kind': 'StaticListVariable', 'spec': {'values': ['grafana', 'migration', 'not', 'supported']}}]
+$ percli migrate -f ipsec-nas.json --format cr --project kcs-ipsec --plugin.path <unpacked plugins> --use-default-datasource -o yaml | head -1
+  apiVersion: perses.dev/v1alpha1

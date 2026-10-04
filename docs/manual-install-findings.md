@@ -95,7 +95,7 @@ spec:
 **What happens:**
 - COO's self-monitoring creates a Role and RoleBinding `prometheus-k8s` in its namespace, so the platform Prometheus can scrape the operator.
 - With a UIPlugin that enables **Perses only**, every UIPlugin reconcile **deletes** them.
-- The platform then did not scrape COO (`up{namespace="openshift-cluster-observability-operator"}`: 0 series), so the rules of COO's PrometheusRule `observability-operator` had none of COO's metrics to evaluate (inferred, not observed as an alert). On an install already being scraped, scraping continued for the 3 min 44 s watched ([11](evidence/crc/11-chart-on-crc.txt) §3).
+- The platform then did not scrape COO (`up{namespace="openshift-cluster-observability-operator"}`: 0 series; the time of that query was not recorded), so the rules of COO's PrometheusRule `observability-operator` had none of COO's metrics to evaluate (inferred, not observed as an alert). On an install already being scraped, scraping continued for the 3 min 44 s watched ([11](evidence/crc/11-chart-on-crc.txt) §3).
 
 **The evidence:**
 - **API server audit log**, all by `system:serviceaccount:openshift-cluster-observability-operator:observability-operator-sa`:
@@ -161,7 +161,7 @@ What follows for teams' dashboards:
 | Namespace-only reader | **Forbidden on every panel** | Forbidden (no `cluster-monitoring-view`) |
 | Reader holding `cluster-monitoring-view` | Forbidden (not measured: follows from the `create pods` check) | **every panel answers**, platform metrics included |
 
-`cluster-monitoring-view` holds exactly two rules: `get` on `namespaces`, and `get`/`create`/`update` on `prometheuses/api` (resource name `k8s`). Thanos's proxy checks a `GET` query as `get` and a `POST` as `create` (both measured); `update` for `PUT` was not measured. It is read access to metrics, nothing else.
+`cluster-monitoring-view` holds exactly two rules: `get` on `namespaces`, and `get`/`create`/`update` on `prometheuses/api` (resource name `k8s`; [12](evidence/crc/12-review-reads.txt) section 4). Thanos's proxy checks a `GET` query as `get` and a `POST` as `create` (both measured); `update` for `PUT` was not measured. It is read access to metrics, nothing else.
 
 **So:**
 - Application dashboards use a `PersesDatasource` on **9091**.

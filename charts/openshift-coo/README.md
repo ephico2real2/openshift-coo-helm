@@ -99,7 +99,7 @@ oc patch console.operator.openshift.io cluster --type json \
 
 **What happens.** COO creates a Role and RoleBinding `prometheus-k8s` in its namespace, so the platform Prometheus may discover and scrape it. COO itself deletes them:
 - on every UIPlugin reconcile, when the monitoring UIPlugin enables **neither** `clusterHealthAnalyzer` nor `incidents` (measured with Perses on: evidence 03, 06; reproduced by this chart, evidence 11 §2; the source condition does not involve Perses);
-- when the UIPlugin is deleted (evidence 10, step 1). With the analyzer on, the UIPlugin is their controller owner (read on CRC: `ownerReferences` UIPlugin `monitoring`, `controller: true`), so the garbage collector removes them with it; that deletion itself was not re-measured.
+- when the UIPlugin is deleted (evidence 10, step 1). With the analyzer on, the UIPlugin is their controller owner (read on CRC, [evidence 12](../../docs/evidence/crc/12-review-reads.txt): `ownerReferences` UIPlugin `monitoring`, `controller: true`), so the garbage collector removes them with it; that deletion itself was not re-measured.
 
 **Why.** In `rhobs/observability-operator`, two controllers own objects with these names: the operator's self-monitoring and the UIPlugin's health analyzer. `pkg/controllers/uiplugin/components.go:133,145-146` registers the health analyzer's copies as optional, deleted when it is off ([findings §5](../../docs/manual-install-findings.md#5-a-defect-in-coo-the-uiplugin-deletes-coos-own-monitoring-rbac-03-06)).
 
@@ -130,10 +130,10 @@ What this release does **not** cover, stated so nobody relies on it:
 |---|---|
 | **OpenShift 4.19 or later only** | The chart refuses Kubernetes below 1.32. 4.18 is not supported. |
 | **One test cluster** | Every run was on OpenShift Local: single node, OpenShift 4.22.7. Behaviour that needs several nodes was not observed. Other 4.19+ versions were not run. |
-| **COO 1.5.2 and 1.5.3 measured** | `crds/` holds 1.5.3's UIPlugin CRD. Red Hat's COO release notes end at 1.5.2, although 1.5.3 is the catalog head (read 2026-10-04). A later COO version stays unapproved until `operator.version` changes, and then needs `scripts/refresh-uiplugin-crd.sh`, the tests and a cluster run. |
+| **COO 1.5.2 and 1.5.3 measured** | `crds/` holds 1.5.3's UIPlugin CRD. Red Hat's COO release notes end at 1.5.2, although 1.5.3 is the catalog head (read 2026-10-04). A later COO version stays unapproved until `operator.version` changes. Moving the chart to it means changing `appVersion` and `operator.version` together, then `scripts/refresh-uiplugin-crd.sh` (it reads `appVersion`), the tests and a cluster run. |
 | **Waiting on upstream** ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)) | The COO defect that deletes COO's own scrape grant, and three COO uninstall behaviours. The chart works around each one; none is fixed here. |
 | **What the scrape grant proves** | With `clusterHealthAnalyzer` off, COO stayed scraped with the chart's grant. With neither grant, scraping also continued for the 3 min 44 s watched, so the scrape data alone does not show the grant is needed; the `can-i` check does show Prometheus loses the permission. |
-| **Not measured** | A hand-made UIPlugin blocking a Helm install; Argo CD deleting a CRD it tracks; a `PUT` query checked as `update`; the deprecated `incidents` field alone; the approver refusing a version OLM offers other than `operator.version`. |
+| **Not measured** | A hand-made UIPlugin blocking a Helm install; Argo CD deleting a CRD it tracks; a `PUT` query checked as `update`; the deprecated `incidents` field alone; the approver refusing a version OLM offers other than `operator.version`; port 9092 for a reader holding `cluster-monitoring-view`; the UIPlugin's deletion since the owner read ([evidence 12](../../docs/evidence/crc/12-review-reads.txt)). |
 | **No converter page yet** | The Grafana-to-Perses page ([#2](https://github.com/ephico2real2/openshift-coo-helm/issues/2)) is not built. `percli` by hand: [docs/percli.md](../../docs/percli.md). |
 
 ## Tests
