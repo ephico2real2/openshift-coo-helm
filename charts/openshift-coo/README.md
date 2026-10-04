@@ -103,9 +103,11 @@ oc patch console.operator.openshift.io cluster --type json \
 
 **Why.** In `rhobs/observability-operator`, two controllers own objects with these names: the operator's self-monitoring and the UIPlugin's health analyzer. `pkg/controllers/uiplugin/components.go:133,145-146` registers the health analyzer's copies as optional, deleted when it is off ([findings §5](../../docs/manual-install-findings.md#5-a-defect-in-coo-the-uiplugin-deletes-coos-own-monitoring-rbac-03-06)).
 
-**The effect.** `prometheus-k8s` may no longer list endpoints, pods, services or endpointslices in COO's namespace (measured: `oc auth can-i ... --as system:serviceaccount:openshift-monitoring:prometheus-k8s` → `no`). On a fresh install COO is then never scraped, and its alerts never fire (evidence 03: 0 series). On a running install Prometheus keeps the watch it already holds, and loses COO when that watch is re-opened or Prometheus restarts (evidence 11 §3: still scraped 4 minutes later; not waited out).
+**The effect.** `prometheus-k8s` may no longer list endpoints, pods, services or endpointslices in COO's namespace (measured: `oc auth can-i ... --as system:serviceaccount:openshift-monitoring:prometheus-k8s` → `no`). Observed twice: on a fresh install, with the grant deleted 54 s after COO created it, COO was not scraped (evidence 03: 0 series); on an install already being scraped, scraping continued at every sample from 05:08:54 to 05:12:38Z (evidence 11 §3), and was not watched longer. Why it continued is not verified; the likely reason is that Prometheus keeps the discovery watch it opened while it was allowed.
 
 **The fix: `platformScrapeRBAC` (on by default).** The chart ships the same rules as its own Role and RoleBinding, `<release>-openshift-coo-prometheus-k8s`. COO never touches them. Measured with `clusterHealthAnalyzer=false`: COO's `prometheus-k8s` gone, the chart's present, `observability-operator` scraped (`up` = 1) throughout. The gate checks the grant the platform actually relies on, so turning both off fails the install, measured with `wait.waitSeconds=60`: `FAILED: Role and RoleBinding prometheus-k8s for the platform Prometheus: not within 60s`.
+
+**Upstream:** a bug report is drafted, not filed: [docs/upstream/observability-operator-prometheus-k8s-rbac.md](../../docs/upstream/observability-operator-prometheus-k8s-rbac.md). The cited source lines are the same at `v1.5.2`, both 1.5 release branches and `main` (read 2026-10-04).
 
 ### OpenShift 4.18: turn incident detection off
 

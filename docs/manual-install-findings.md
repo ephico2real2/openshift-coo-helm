@@ -95,7 +95,7 @@ spec:
 **What happens:**
 - COO's self-monitoring creates a Role and RoleBinding `prometheus-k8s` in its namespace, so the platform Prometheus can scrape the operator.
 - With a UIPlugin that enables **Perses only**, every UIPlugin reconcile **deletes** them.
-- The platform then cannot scrape COO (`up{namespace="openshift-cluster-observability-operator"}`: 0 series). COO's own alerts (PrometheusRule `observability-operator`) cannot fire.
+- The platform then did not scrape COO (`up{namespace="openshift-cluster-observability-operator"}`: 0 series), so the rules of COO's PrometheusRule `observability-operator` had none of COO's metrics to evaluate (inferred, not observed as an alert). On an install already being scraped, scraping continued for the 3 min 44 s watched ([11](evidence/crc/11-chart-on-crc.txt) §3).
 
 **The evidence:**
 - **API server audit log**, all by `system:serviceaccount:openshift-cluster-observability-operator:observability-operator-sa`:
