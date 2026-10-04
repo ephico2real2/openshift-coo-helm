@@ -5,13 +5,15 @@ and of redhat-cop's operators-installer, which also approves only the declared v
 
 Measured on CRC with COO 1.5.2 and 1.5.3 (docs/evidence/crc/10-lifecycle-uninstall-reinstall-upgrade.txt):
 - a first install stages one plan, RequiresApproval, naming only the startingCSV;
-- with a version installed, OLM stages the next one at once and the Subscription reads UpgradePending, with
-  installPlanRef pointing at it: an approver that approved "the referenced plan" would upgrade COO on every sync;
+- with 1.5.2 installed, the 1.5.3 plan was staged by the first sample (5 s after 1.5.2 Succeeded) and the Subscription
+  read UpgradePending, with installPlanRef pointing at it. The openshift-grafana approver approves the referenced plan
+  when it names the package (its lines 211-212, 287, 295; read, not run), so a sync would approve that upgrade;
 - over a CSV left by an earlier uninstall, OLM reports ResolutionFailed and stages nothing until it is deleted
   (the csv-reclaim Job), then stages a plan within 5 s.
 
 Helm: post-install/post-upgrade, weight -1, after the reclaim (-2), before the gate (0). Argo CD: a Sync hook at
-the Subscription's wave (-1); a later wave would wait on a Subscription that waits on this Job.
+the Subscription's wave (-1), as in the openshift-grafana chart, whose comment records a first-sync deadlock measured
+on a sibling chart when the approver ran one wave later.
 */ -}}
 apiVersion: v1
 kind: ServiceAccount

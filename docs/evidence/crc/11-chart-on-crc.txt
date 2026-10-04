@@ -35,8 +35,8 @@ monitoring-console-plugin entry removed by hand (05:00:58-05:01:40Z). Snapshot: 
   oc auth can-i --as system:serviceaccount:openshift-monitoring:prometheus-k8s -n <COO ns>:
     list endpoints: no; list pods: no; list services: no; list endpointslices.discovery.k8s.io: no
   up{...}: observability-operator=1 still at every sample 05:08:54-05:12:38Z (3 min 44 s); not watched longer.
-  Why it continued is not verified; the likely reason is that Prometheus keeps the discovery watch it opened while it
-  was allowed. Prometheus was not restarted to test it: CRC's platform Prometheus has no persistent storage.
+  Why it continued is not known; it was not investigated (CRC's platform Prometheus has no persistent storage, so it was
+  not restarted).
   Contrast, evidence 03: on a fresh install the grant was deleted 54 s after COO created it, and COO was not scraped.
 
 ## 4. Back to the defaults: helm upgrade --reset-values (05:13:33Z) -> deployed (revision 4)

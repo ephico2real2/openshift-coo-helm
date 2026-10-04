@@ -62,7 +62,7 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 
 ## Upgrade COO
 
-The approver approves **only `operator.version`**. As soon as one version is installed, OLM stages the next one and the Subscription reads `UpgradePending` (measured: within 40 s); an approver that approved "the referenced plan" would upgrade COO on every sync. Here, that plan waits:
+The approver approves **only `operator.version`**. With one version installed, OLM stages the next one and points the Subscription at it (`UpgradePending`): measured, the 1.5.3 plan was there at the first sample, 43 s after 1.5.2 was approved and 5 s after it Succeeded. The `openshift-grafana` approver takes the plan the Subscription references and approves it if it names the package ([its lines 211-212, 287, 295](https://github.com/ephico2real2/group-sync-dashboard/blob/main/charts/openshift-grafana/templates/02-installplan-approver.yaml#L211-L295), read, not run), so on a sync while such a plan is pending it would approve the upgrade. Here, that plan waits:
 
 ```text
 [approver] cluster-observability-operator.v1.5.2 is the installed CSV; nothing to approve
@@ -103,7 +103,7 @@ oc patch console.operator.openshift.io cluster --type json \
 
 **Why.** In `rhobs/observability-operator`, two controllers own objects with these names: the operator's self-monitoring and the UIPlugin's health analyzer. `pkg/controllers/uiplugin/components.go:133,145-146` registers the health analyzer's copies as optional, deleted when it is off ([findings §5](../../docs/manual-install-findings.md#5-a-defect-in-coo-the-uiplugin-deletes-coos-own-monitoring-rbac-03-06)).
 
-**The effect.** `prometheus-k8s` may no longer list endpoints, pods, services or endpointslices in COO's namespace (measured: `oc auth can-i ... --as system:serviceaccount:openshift-monitoring:prometheus-k8s` → `no`). Observed twice: on a fresh install, with the grant deleted 54 s after COO created it, COO was not scraped (evidence 03: 0 series); on an install already being scraped, scraping continued at every sample from 05:08:54 to 05:12:38Z (evidence 11 §3), and was not watched longer. Why it continued is not verified; the likely reason is that Prometheus keeps the discovery watch it opened while it was allowed.
+**The effect.** `prometheus-k8s` may no longer list endpoints, pods, services or endpointslices in COO's namespace (measured: `oc auth can-i ... --as system:serviceaccount:openshift-monitoring:prometheus-k8s` → `no`). Observed twice: on a fresh install, with the grant deleted 54 s after COO created it, COO was not scraped (evidence 03: 0 series); on an install already being scraped, scraping continued at every sample from 05:08:54 to 05:12:38Z (evidence 11 §3), and was not watched longer. Why it continued is not known; it was not investigated.
 
 **The fix: `platformScrapeRBAC` (on by default).** The chart ships the same rules as its own Role and RoleBinding, `<release>-openshift-coo-prometheus-k8s`. COO never touches them. Measured with `clusterHealthAnalyzer=false`: COO's `prometheus-k8s` gone, the chart's present, `observability-operator` scraped (`up` = 1) throughout. The gate checks the grant the platform actually relies on, so turning both off fails the install, measured with `wait.waitSeconds=60`: `FAILED: Role and RoleBinding prometheus-k8s for the platform Prometheus: not within 60s`.
 
@@ -125,7 +125,7 @@ Without `platformScrapeRBAC` this setting would trigger the defect above. With i
 ### Others
 
 - **The Subscription's state is not readiness.** After an approval the Subscription read `AtLatestKnown` while the new CSV was still `Pending`. The gate waits for the CSV's phase.
-- **Scraping starts after the gate.** The platform Prometheus scraped COO 62 s after the gate passed (its configuration reloads on its own schedule). The gate checks what scraping needs, not the first scrape.
+- **Scraping starts after the gate.** Measured: the platform Prometheus's last configuration reload was at 05:01:55Z, before COO's ServiceMonitors existed; it scraped `health-analyzer` at 05:03:23Z and `observability-operator` at 05:03:38Z, 62 s after the gate passed at 05:02:36Z. The gate checks what scraping needs, not the first scrape.
 - **A UIPlugin made by hand blocks the install.** The UIPlugin's name is fixed (the CRD: "UIPlugin name must be 'monitoring' if type is Monitoring"). Delete the hand-made one first, or adopt it into the release.
 - **Argo CD does not put back what you delete by hand** unless the Application has `selfHeal`. Deleting COO's CRDs deletes every application's Perses objects; sync those applications again afterwards (measured with openshift-ipsec-nas).
 
