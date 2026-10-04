@@ -44,13 +44,13 @@ The sample objects, and how the dashboard was converted from Grafana: [docs/graf
 
 <!-- markdownlint-disable MD033 -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-ipsec-dashboard.dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/example-ipsec-dashboard.light.png">
-  <img alt="The IPsec to the NAS dashboard as a reader with view and cluster-monitoring-view: tunnels up 1, down 0, workers reporting 1, soonest certificate expiry 12.1 months, tunnel state UP, traffic around 3.8 MiB/s, libreswan 5.3, a per-node table with one row for crc (UP, YES, PRESENT, YES, YES, 2 NFS mounts, 39.8 requests/sec, 0 drops), and a NAS identity table showing crc, its reporting pod and O=KCS OpenShift lab, CN=crc-nas.lab.internal." src="docs/images/example-ipsec-dashboard.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/example-ipsec-console.dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/example-ipsec-console.light.png">
+  <img alt="The OpenShift console, Observe, Dashboards, project kcs-ipsec, dashboard IPsec to the NAS: tunnels up 1, down 0, workers reporting 1, soonest certificate expiry 12.1 months, tunnel state UP, traffic rising to about 3.8 MiB/s under load, tunnel age 1.68h, metrics age 50s, libreswan 5.3, nodes reported twice 0, pods reporting the wrong node 0, kernel IPsec errors 0, a per-node table with one row for crc (UP, YES, PRESENT, YES, YES, 2 NFS mounts, 39.8 requests/sec, 0 drops), a NAS identity table showing crc, ipsec-cert-sync-5mvdc and O=KCS OpenShift lab, CN=crc-nas.lab.internal, tunnel re-establishments 0, and kernel IPsec errors per node showing No data." src="docs/images/example-ipsec-console.light.png">
 </picture>
 <!-- markdownlint-enable MD033 -->
 
-*The ipsec dashboard on CRC's data, as a reader holding `view` and `cluster-monitoring-view`. Taken in the upstream Perses 0.54.0 UI, the version COO 1.5 builds on. COO's Perses has no UI of its own; its UI is the console's. A capture from **Observe → Dashboards (Perses)** in the console will replace this one.*
+*The sample: the ipsec chart's `PersesDashboard` and `PersesDatasource` under **Observe → Dashboards (Perses)**, project `kcs-ipsec`, on CRC's data. "No data" on the last panel means no kernel IPsec errors: it shows only counters above 0. The console shell is the community (OKD) build of the same console, `quay.io/openshift/origin-console:4.22`, run on a laptop against CRC with sign-in turned off (hence the `okd` logo and "Auth disabled"). COO's console plugin, its Perses server, the dashboard and the data are CRC's own ([evidence 09](docs/evidence/crc/09-console-perses-capture.txt)).*
 
 ## Documents
 

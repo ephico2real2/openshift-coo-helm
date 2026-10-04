@@ -100,6 +100,6 @@ What each choice is, measured ([manual-install findings](manual-install-findings
 2. **Every expression carried over:** compare the PromQL of the Grafana JSON and of the Perses one; only the queries you moved on purpose may differ.
 3. **Accepted by the cluster:** `oc apply --dry-run=server`, then both objects report `Available=True`.
 4. **Answers through COO's Perses:** a query through `/proxy/projects/<namespace>/datasources/<name>/api/v1/query` returns data, as `GET` and as `POST`.
-5. **Looks right:** open it under **Observe → Dashboards (Perses)**, as a viewer who holds only `view` and `cluster-monitoring-view`.
+5. **Looks right:** open it under **Observe → Dashboards (Perses)**, as a viewer who holds only `view` and `cluster-monitoring-view`. The ipsec dashboard there: [the README's sample](../README.md#example-openshift-ipsec-nas).
 
 The ipsec chart's `tests/test-chart.sh` also keeps its chart and its plain manifest identical, and refuses to install the dashboard on a cluster without COO's Perses API.
