@@ -1,0 +1,72 @@
+# Chart openshift-user-workload-monitoring 0.1.0 on CRC 4.22.7, Helm v4.3.0, OpenShift GitOps (Argo CD v3.4.7),
+# 2026-10-04 17:26-17:31Z. Values: examples/values-ipsec-nas.yaml (namespacesWithoutLabelEnforcement [kcs-ipsec],
+# alertmanager enabled with AlertmanagerConfig). Release namespace: openshift-user-workload-monitoring.
+# Before, the same settings had been put in the ConfigMap by hand (oc patch).
+
+## 0. Why the chart can own the ConfigMap (cluster-monitoring-operator, release-4.18)
+  assets/prometheus-user-workload/config-map.yaml: data: {}, labels app.kubernetes.io/managed-by: cluster-monitoring-operator,
+    app.kubernetes.io/part-of: openshift-monitoring
+  pkg/tasks/prometheusoperator_user_workload.go: t.client.CreateIfNotExistConfigMap(ctx, userCM)
+  pkg/client/client.go CreateIfNotExistConfigMap: Get; Create only if NotFound; otherwise return it unchanged
+  pkg/operator/operator.go loadUserWorkloadConfig: reads it; NotFound -> defaults
+  Helm v4.3.0 pkg/action/validate.go: adoption needs label app.kubernetes.io/managed-by=Helm and annotations
+    meta.helm.sh/release-name/-namespace; --take-ownership skips that check. Server-side apply is the default.
+
+## 1. Before (17:26:31Z)
+  openshift-monitoring: 16 ConfigMaps, names and resourceVersions recorded (read only)
+  user-workload-monitoring-config: labels managed-by=cluster-monitoring-operator, part-of=openshift-monitoring;
+    managedFields: operator (Update), kubectl-patch (Update, the hand edit)
+
+## 2. helm install, plain (17:26:31Z): refused, nothing changed
+  Error: INSTALLATION FAILED: unable to continue with install: ConfigMap "user-workload-monitoring-config" in namespace
+  "openshift-user-workload-monitoring" exists and cannot be imported into the current release: invalid ownership
+  metadata; label validation error: key "app.kubernetes.io/managed-by" must equal "Helm": current value is
+  "cluster-monitoring-operator"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to
+  "uwm"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to
+  "openshift-user-workload-monitoring"
+
+## 3. helm install --take-ownership (17:26:40Z): release failed, ConfigMap unchanged
+  helm status: STATUS failed; "conflict occurred while applying object ... Apply failed with 2 conflicts: conflicts with
+  "kubectl-patch" using v1: - .data.config.yaml; conflicts with "operator" using v1: ..."
+  The ConfigMap kept its labels and data; the monitoring components were untouched (alertmanager-user-workload-0 the
+  same pod). --take-ownership skips Helm's own check; server-side apply still refuses fields of other managers.
+  Not done: helm uninstall of the failed release, which would delete the ConfigMap it lists.
+
+## 4. helm upgrade --take-ownership --force-conflicts (17:27:25Z): adopted
+  STATUS deployed, REVISION 2
+  labels: app.kubernetes.io/instance=uwm, managed-by=Helm, part-of=openshift-monitoring, helm.sh/chart=...-0.1.0
+  annotations: meta.helm.sh/release-name=uwm, meta.helm.sh/release-namespace=openshift-user-workload-monitoring
+  config.yaml: alertmanager {enableAlertmanagerConfig: true, enabled: true}, namespacesWithoutLabelEnforcement [kcs-ipsec]
+  managedFields: helm (Apply), operator (Update), kubectl-patch (Update)
+  The same settings, so nothing restarted: alertmanager-user-workload-0 Running, started 16:46:45Z (before the chart);
+  ThanosRuler and Prometheus excludedFromEnforcement [kcs-ipsec prometheusrules].
+
+## 5. helm upgrade (17:27:54Z, 17:28:00Z)
+  --set config.thanosRuler.logLevel=debug  -> REVISION 3; 17:28:00Z ThanosRuler spec.logLevel=debug (6 s)
+  back to the example values               -> REVISION 4; 17:28:19Z ThanosRuler spec.logLevel='' (19 s)
+
+## 6. helm uninstall (17:28:33Z)
+  17:28:38Z the operator recreated the ConfigMap (5 s): labels managed-by=cluster-monitoring-operator, part-of=openshift-monitoring; no data
+  17:28:41Z no Alertmanager in openshift-user-workload-monitoring; ThanosRuler excludedFromEnforcement empty (the defaults)
+
+## 7. helm install --take-ownership --force-conflicts over the operator's recreated ConfigMap (17:28:41Z)
+  STATUS deployed, REVISION 1, in one step
+  17:29:00Z alertmanager-user-workload-0 6/6 Running; ThanosRuler excludedFromEnforcement [kcs-ipsec] (19 s)
+
+## 8. openshift-monitoring (17:29:09Z): 16 ConfigMaps, the same resourceVersions as at 17:26:31Z
+
+## 9. Argo CD (examples/argocd-application.yaml, main at cc90e4a)
+  17:30:04Z helm uninstall uwm, to start from the operator's own ConfigMap (recreated 17:30:09Z, no data)
+  17:30:09Z oc apply -f charts/openshift-user-workload-monitoring/examples/argocd-application.yaml
+  17:30:12Z Synced Healthy Succeeded, rev cc90e4a260e3ee40c6f1a9a7f4a8fc68e3ef087c, "successfully synced (all tasks run)"
+            (3 s; no sync option needed to adopt the operator's ConfigMap)
+            labels: instance=openshift-user-workload-monitoring, managed-by=Helm, part-of=openshift-monitoring;
+            annotation argocd.argoproj.io/tracking-id=openshift-user-workload-monitoring:/ConfigMap:openshift-user-workload-monitoring/user-workload-monitoring-config
+  17:30:31Z alertmanager-user-workload-0 6/6 Running; excludedFromEnforcement [kcs-ipsec]
+  17:30:44Z oc delete application (finalizer resources-finalizer.argocd.argoproj.io)
+  17:30:49Z the ConfigMap deleted and recreated by the operator (new uid), no data
+  17:31:08Z no Alertmanager; excludedFromEnforcement empty: as helm uninstall
+  17:31:19Z the Application applied again: 17:31:28Z Synced Healthy, Alertmanager Running, excludedFromEnforcement [kcs-ipsec]
+
+## 10. Left on CRC: the Argo CD Application openshift-user-workload-monitoring, Synced/Healthy.
+  openshift-monitoring at the end: 16 ConfigMaps, the same resourceVersions as at 17:26:31Z.

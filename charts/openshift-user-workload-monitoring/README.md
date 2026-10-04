@@ -43,7 +43,7 @@ Add other stanzas beside them as needed.
 
 ## Install with Argo CD
 
-`examples/argocd-application.yaml`.
+`examples/argocd-application.yaml`. Argo CD adopts the operator's ConfigMap with no extra option (measured with Argo CD 3.4.7: Synced and Healthy 3 seconds after the Application was applied), and deleting the Application deletes the ConfigMap as `helm uninstall` does ([evidence 14](../../docs/evidence/crc/14-user-workload-monitoring-chart.txt) §9).
 
 ## Upgrade, uninstall
 

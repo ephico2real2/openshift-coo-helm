@@ -6,6 +6,7 @@ Applications consume this platform piece, and keep their own dashboards in their
 
 **Status:**
 - **The chart, [`charts/openshift-coo`](charts/openshift-coo/README.md), installs COO with Perses hands-free** from Helm or Argo CD, on OpenShift 4.19 or later. Measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3: clean install, re-run, upgrade, uninstall and reinstall ([evidence 11](docs/evidence/crc/11-chart-on-crc.txt)).
+- **The chart [`charts/openshift-user-workload-monitoring`](charts/openshift-user-workload-monitoring/README.md) holds the settings of user workload monitoring** (the ConfigMap `user-workload-monitoring-config` in `openshift-user-workload-monitoring`) in values, from Helm or Argo CD, on OpenShift 4.18 or later. Measured on CRC 4.22.7: adoption of the operator's ConfigMap, upgrade, uninstall, Argo CD; nothing in `openshift-monitoring` changed ([evidence 14](docs/evidence/crc/14-user-workload-monitoring-chart.txt)).
 - **How COO behaves**, installed and studied by hand first: [manual-install findings](docs/manual-install-findings.md).
 - **The Grafana-to-Perses converter page** is planned in [issue #2](https://github.com/ephico2real2/openshift-coo-helm/issues/2).
 
@@ -64,6 +65,7 @@ The sample objects, and how the dashboard was converted from Grafana: [docs/graf
 | Document | What it covers |
 |---|---|
 | [charts/openshift-coo/README.md](charts/openshift-coo/README.md) | **The chart:** what it installs, Helm and Argo CD, values, upgrading COO, uninstalling and what stays, and the known issues (the COO defect it fixes, why OpenShift 4.19) |
+| [charts/openshift-user-workload-monitoring/README.md](charts/openshift-user-workload-monitoring/README.md) | **The user workload monitoring chart:** why it can own the ConfigMap, installing over the operator's (`--take-ownership --force-conflicts`), values, Argo CD, upgrade and uninstall |
 | [docs/manual-install-findings.md](docs/manual-install-findings.md) | COO installed by hand: the catalog, the Manual-approval install, what it adds to the cluster, enabling Perses, a COO defect and its fix (`clusterHealthAnalyzer`), how Perses reaches Thanos with each viewer's own token, the decision on Thanos 9091, and what a hands-free chart must do |
 | [docs/grafana-to-perses.md](docs/grafana-to-perses.md) | **Converting a Grafana dashboard to Perses:** the steps, what the converter gets wrong and how to fix it, the two objects an application ships, who can see it, and how to verify it, all measured on the ipsec dashboard |
 | [docs/percli.md](docs/percli.md) | Installing `percli` (the Perses CLI) on Linux and macOS: script, by hand, or the container image |
