@@ -153,6 +153,24 @@ What follows for teams' dashboards:
 - **A datasource must name the Perses secret the operator derives from `client.tls`** (`<datasource>-secret`) in `proxy.spec.secret`. Without it: `x509: certificate signed by unknown authority`.
 - **A namespace becomes a Perses project** as soon as a Perses resource exists in it.
 
+## 6a. Decision: dashboards query Thanos 9091; viewers hold `cluster-monitoring-view`
+
+**Decided 2026-10-03.** Metrics carry no PHI or PII, and namespace owners must see their own metrics without technical gymnastics. Measured with a real dashboard ([openshift-ipsec-nas doc 61](https://github.com/ephico2real2/openshift-ipsec-nas/blob/main/docs/61-perses-dashboard-review.md)):
+
+| | Port 9092 (per namespace) | Port 9091 (cluster) |
+|---|---|---|
+| A `POST` query is checked as | `create` on **pods** in the namespace: the right to run workloads | `create` on **`prometheuses/api`** |
+| The Perses UI sends its data queries as | `POST`; there is no `GET` setting | `POST` |
+| Namespace-only reader | **Forbidden on every panel** | Forbidden (no `cluster-monitoring-view`) |
+| Reader holding `cluster-monitoring-view` | Forbidden | **every panel answers**, platform metrics included |
+
+`cluster-monitoring-view` holds exactly two rules: `get` on `namespaces`, and `get`/`create`/`update` on `prometheuses/api`. The last three are how Thanos's proxy names `GET`, `POST` and `PUT` queries. It is read access to metrics, nothing else.
+
+**So:**
+- Application dashboards use a `PersesDatasource` on **9091**.
+- Their viewers hold `cluster-monitoring-view`.
+- Who holds it is a platform setting of this chart (issue #1). It is one binding for everyone, so no team files a request per namespace.
+
 ## 7. Versions ([07](evidence/crc/07-percli-install.txt))
 
 COO 1.5 builds on Perses **v0.54.0**: `release-1.5`'s `go.mod` lists `github.com/perses/perses v0.54.0`, Prometheus plugin v0.58.0, and table and time-series plugins v0.13.0. The server image does not report a version. Use `percli` 0.54.0: [percli.md](percli.md).
@@ -170,7 +188,8 @@ COO 1.5 builds on Perses **v0.54.0**: `release-1.5`'s `go.mod` lists `github.com
    This is the approver pattern of the `openshift-grafana` chart.
 3. **Configure.** The `UIPlugin` with `perses` **and** `clusterHealthAnalyzer`, applied only after the CSV is `Succeeded` (its CRD must exist).
 4. **Verify.** Wait for the UIPlugin to be `Available`, `monitoring-console-plugin` to be in `console.spec.plugins`, Perses to be ready, and the platform to scrape COO.
-5. **Still open, to measure before the chart is written:**
+5. **Grant metrics access (decision 6a).** A ClusterRoleBinding of `cluster-monitoring-view` to the groups in a value, for example `system:authenticated` (everyone logged in) or named groups. With none listed, nothing is bound.
+6. **Still open, to measure before the chart is written:**
    - uninstall (what stays: CRDs, CSV, console plugin);
    - reinstall over a left-over CSV (the `openshift-grafana` chart's reclaim);
    - upgrades within `stable`;
