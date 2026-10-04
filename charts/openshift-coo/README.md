@@ -107,7 +107,7 @@ oc patch console.operator.openshift.io cluster --type json \
 
 **The fix: `platformScrapeRBAC` (on by default).** The chart ships the same rules as its own Role and RoleBinding, `<release>-openshift-coo-prometheus-k8s`. COO never touches them. Measured with `clusterHealthAnalyzer=false`: COO's `prometheus-k8s` gone, the chart's present, `observability-operator` scraped (`up` = 1) throughout. The gate checks the grant the platform actually relies on, so turning both off fails the install, measured with `wait.waitSeconds=60`: `FAILED: Role and RoleBinding prometheus-k8s for the platform Prometheus: not within 60s`.
 
-**Upstream:** a bug report is drafted, not filed: [docs/upstream/observability-operator-prometheus-k8s-rbac.md](../../docs/upstream/observability-operator-prometheus-k8s-rbac.md). The cited source lines are the same at `v1.5.2`, both 1.5 release branches and `main` (read 2026-10-04).
+**Upstream:** a bug report is drafted, not filed ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)): [docs/upstream/observability-operator-prometheus-k8s-rbac.md](../../docs/upstream/observability-operator-prometheus-k8s-rbac.md). The cited source lines are the same at `v1.5.2`, both 1.5 release branches and `main` (read 2026-10-04).
 
 ### OpenShift 4.18: turn incident detection off
 
@@ -120,7 +120,7 @@ helm install openshift-coo charts/openshift-coo -n platform-tools --create-names
   --set uiPlugin.clusterHealthAnalyzer=false --set 'metricsAccess.groups={system:authenticated}' --timeout 15m
 ```
 
-Without `platformScrapeRBAC` this setting would trigger the defect above. With it, COO stays scraped (measured on 4.22 with the setting off; **not measured on a 4.18 cluster**, none was available). You lose only incident detection (the `health-analyzer` Deployment), which 4.18 does not support anyway.
+Without `platformScrapeRBAC` this setting would trigger the defect above. With it, COO stays scraped (measured on 4.22 with the setting off; **not measured on a 4.18 cluster**, none was available: [#3](https://github.com/ephico2real2/openshift-coo-helm/issues/3)). You lose only incident detection (the `health-analyzer` Deployment), which 4.18 does not support anyway.
 
 ### Others
 
