@@ -24,8 +24,8 @@ grep -q '^  installPlanApproval: Manual$' <<<"$out" && ok "Manual approval" || b
 [[ "$(grep -c 'value: "cluster-observability-operator.v1.5.3"' <<<"$out")" == 2 ]] && ok "the approver and the gate target the pinned CSV" || bad "TARGET in approver and gate"
 grep -q 'openshift.io/cluster-monitoring: "true"' <<<"$out" && ok "the namespace carries the cluster-monitoring label" || bad "namespace label"
 
-render --kube-version 1.30.9 >/dev/null 2>&1 && bad "Kubernetes 1.30 (OpenShift 4.17) is refused" || ok "Kubernetes 1.30 (OpenShift 4.17) is refused"
-render --kube-version 1.31.0 >/dev/null 2>&1 && ok "Kubernetes 1.31 (OpenShift 4.18) renders" || bad "Kubernetes 1.31 (OpenShift 4.18) renders"
+render --kube-version 1.31.9 | grep -q "requires kubeVersion: >=1.32.0-0" && ok "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check" || bad "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check"
+render --kube-version 1.32.0 >/dev/null 2>&1 && ok "Kubernetes 1.32 (OpenShift 4.19) renders" || bad "Kubernetes 1.32 (OpenShift 4.19) renders"
 
 o="$(objects)"
 has "$o" "ClusterRoleBinding/coo-openshift-coo-cluster-monitoring-view" && bad "no metrics binding without groups" || ok "no metrics binding without groups"

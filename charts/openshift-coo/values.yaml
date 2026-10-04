@@ -43,9 +43,8 @@ csvReclaim:
 # The monitoring UIPlugin: it runs the Perses server and adds Observe -> Dashboards (Perses) to the console.
 uiPlugin:
   perses: true
-  # Incident detection (health-analyzer). Red Hat lists it as GA on OpenShift 4.19 and later; this chart supports
-  # 4.18, so on 4.18 set it false. Off is safe here only because of platformScrapeRBAC below: with Perses on and
-  # this off, COO deletes its own scrape grant (README, Known issues).
+  # Incident detection (health-analyzer), GA on OpenShift 4.19 and later, the chart's minimum. Keep it on: with Perses
+  # on and this off, COO deletes its own scrape grant (README, Known issues); platformScrapeRBAC below covers that too.
   clusterHealthAnalyzer: true
 
 # The chart's own grant for the platform Prometheus to scrape COO: COO's Role and RoleBinding of the same rules,

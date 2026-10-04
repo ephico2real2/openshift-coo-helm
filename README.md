@@ -5,7 +5,7 @@ A Helm chart to install Red Hat's **Cluster Observability Operator (COO)** on Op
 Applications consume this platform piece, and keep their own dashboards in their own repositories. The first is [openshift-ipsec-nas](https://github.com/ephico2real2/openshift-ipsec-nas): see [the example](#example-openshift-ipsec-nas).
 
 **Status:**
-- **The chart, [`charts/openshift-coo`](charts/openshift-coo/README.md), installs COO with Perses hands-free** from Helm or Argo CD, on OpenShift 4.18 or later. Measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3: clean install, re-run, upgrade, uninstall and reinstall ([evidence 11](docs/evidence/crc/11-chart-on-crc.txt)).
+- **The chart, [`charts/openshift-coo`](charts/openshift-coo/README.md), installs COO with Perses hands-free** from Helm or Argo CD, on OpenShift 4.19 or later. Measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3: clean install, re-run, upgrade, uninstall and reinstall ([evidence 11](docs/evidence/crc/11-chart-on-crc.txt)).
 - **How COO behaves**, installed and studied by hand first: [manual-install findings](docs/manual-install-findings.md).
 - **The Grafana-to-Perses converter page** is planned in [issue #2](https://github.com/ephico2real2/openshift-coo-helm/issues/2).
 
@@ -16,7 +16,7 @@ helm install openshift-coo charts/openshift-coo -n platform-tools --create-names
   --set 'metricsAccess.groups={system:authenticated}' --timeout 15m
 ```
 
-Or with Argo CD: [`charts/openshift-coo/examples/argocd-application.yaml`](charts/openshift-coo/examples/argocd-application.yaml). On **OpenShift 4.18**, add `--set uiPlugin.clusterHealthAnalyzer=false`. Why, the COO defect the chart fixes, upgrades and uninstall: [the chart's README](charts/openshift-coo/README.md).
+Or with Argo CD: [`charts/openshift-coo/examples/argocd-application.yaml`](charts/openshift-coo/examples/argocd-application.yaml). Requires OpenShift 4.19 or later. Why, the COO defect the chart fixes, upgrades and uninstall: [the chart's README](charts/openshift-coo/README.md).
 
 ## How an application's dashboard reaches its viewers
 
@@ -65,7 +65,7 @@ The sample objects, and how the dashboard was converted from Grafana: [docs/graf
 
 | Document | What it covers |
 |---|---|
-| [charts/openshift-coo/README.md](charts/openshift-coo/README.md) | **The chart:** what it installs, Helm and Argo CD, values, upgrading COO, uninstalling and what stays, and the known issues (the COO defect it fixes, OpenShift 4.18) |
+| [charts/openshift-coo/README.md](charts/openshift-coo/README.md) | **The chart:** what it installs, Helm and Argo CD, values, upgrading COO, uninstalling and what stays, and the known issues (the COO defect it fixes, why OpenShift 4.19) |
 | [docs/manual-install-findings.md](docs/manual-install-findings.md) | COO installed by hand: the catalog, the Manual-approval install, what it adds to the cluster, enabling Perses, a COO defect and its fix (`clusterHealthAnalyzer`), how Perses reaches Thanos with each viewer's own token, the decision on Thanos 9091, and what a hands-free chart must do |
 | [docs/grafana-to-perses.md](docs/grafana-to-perses.md) | **Converting a Grafana dashboard to Perses:** the steps, what the converter gets wrong and how to fix it, the two objects an application ships, who can see it, and how to verify it, all measured on the ipsec dashboard |
 | [docs/percli.md](docs/percli.md) | Installing `percli` (the Perses CLI) on Linux and macOS: script, by hand, or the container image |

@@ -4,7 +4,7 @@ Installs Red Hat's **Cluster Observability Operator (COO)** with **Perses** on O
 
 Every behaviour below was measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3, Helm 4.3.0 and OpenShift GitOps: [evidence 10](../../docs/evidence/crc/10-lifecycle-uninstall-reinstall-upgrade.txt) (COO's lifecycle by hand) and [evidence 11](../../docs/evidence/crc/11-chart-on-crc.txt) (this chart).
 
-**Supported:** OpenShift **4.18** or later (Kubernetes 1.31), COO **1.5** or later. On 4.18, read [Known issues](#known-issues) first.
+**Supported:** OpenShift **4.19** or later (Kubernetes 1.32), COO **1.5** or later. The chart refuses an older cluster: [why 4.19](#why-openshift-419-or-later).
 
 ## What it does
 
@@ -51,7 +51,7 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 | `namespace.name` | `openshift-cluster-observability-operator` | COO's namespace |
 | `namespace.create` | `true` | `false`: the namespace exists, carries the label, and holds an OperatorGroup |
 | `uiPlugin.perses` | `true` | Perses dashboards in the console |
-| `uiPlugin.clusterHealthAnalyzer` | `true` | Incident detection. **`false` on OpenShift 4.18** ([Known issues](#known-issues)) |
+| `uiPlugin.clusterHealthAnalyzer` | `true` | Incident detection, GA on OpenShift 4.19 and later. Keep it on ([Known issues](#known-issues)) |
 | `platformScrapeRBAC` | `true` | The chart's own scrape grant for the platform Prometheus. Keep it on |
 | `metricsAccess.groups` | `[]` | Groups bound to `cluster-monitoring-view`, so they see the data behind dashboards. `[system:authenticated]`: everyone who logs in |
 | `csvReclaim.enabled` | `true` | The reclaim hook |
@@ -109,18 +109,11 @@ oc patch console.operator.openshift.io cluster --type json \
 
 **Upstream:** a bug report is drafted, not filed ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)): [docs/upstream/observability-operator-prometheus-k8s-rbac.md](../../docs/upstream/observability-operator-prometheus-k8s-rbac.md). The cited source lines are the same at `v1.5.2`, both 1.5 release branches and `main` (read 2026-10-04).
 
-### OpenShift 4.18: turn incident detection off
+### Why OpenShift 4.19 or later
 
-**What Red Hat says.** Incident detection (`spec.monitoring.clusterHealthAnalyzer`) is GA on OpenShift 4.19 and later ([COO release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/red_hat_openshift_cluster_observability_operator_release_notes/cluster-observability-operator-release-notes)). Perses needs COO 1.5 or later on OpenShift 4.15 or later ([UI plugins](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html-single/ui_plugins_for_red_hat_openshift_cluster_observability_operator/index)). COO 1.4 replaced the field `incidents` with `clusterHealthAnalyzer`.
+**What Red Hat says.** Incident detection (`spec.monitoring.clusterHealthAnalyzer`) is GA on OpenShift 4.19 and later ([COO release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/red_hat_openshift_cluster_observability_operator_release_notes/cluster-observability-operator-release-notes)). COO 1.4 replaced the field `incidents` with it. Perses needs COO 1.5 or later on OpenShift 4.15 or later ([UI plugins](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html-single/ui_plugins_for_red_hat_openshift_cluster_observability_operator/index)).
 
-**What to do on 4.18:**
-
-```bash
-helm install openshift-coo charts/openshift-coo -n platform-tools --create-namespace \
-  --set uiPlugin.clusterHealthAnalyzer=false --set 'metricsAccess.groups={system:authenticated}' --timeout 15m
-```
-
-Without `platformScrapeRBAC` this setting would trigger the defect above. With it, COO stays scraped (measured on 4.22 with the setting off; **not measured on a 4.18 cluster**, none was available: [#3](https://github.com/ephico2real2/openshift-coo-helm/issues/3)). You lose only incident detection (the `health-analyzer` Deployment), which 4.18 does not support anyway.
+**So:** the chart turns incident detection on by default, which also avoids the defect above, and requires Kubernetes 1.32, OpenShift 4.19 ([4.19 release notes](https://docs.redhat.com/en/documentation/openshift_container_platform/4.19/html-single/release_notes/index)). Helm refuses to render it for an older version: `tests/test-chart.sh` checks that Kubernetes 1.31 (OpenShift 4.18) is refused and 1.32 renders. No cluster older than 4.22.7 was used.
 
 ### Others
 

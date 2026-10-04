@@ -6,11 +6,12 @@ description: >-
   (dashboards under Observe -> Dashboards (Perses)), metrics access for dashboard viewers, and a gate that
   returns only when all of it works.
 type: application
-version: 0.1.0
+version: 0.2.0
 # The COO version this chart installs and was measured with; operator.version defaults to it.
 appVersion: "1.5.3"
-# OpenShift 4.18 (Kubernetes 1.31) or later: the platform team's minimum supported version.
-kubeVersion: ">=1.31.0-0"
+# OpenShift 4.19 (Kubernetes 1.32) or later: Red Hat lists incident detection (the UIPlugin's clusterHealthAnalyzer,
+# on by default here) as GA from 4.19.
+kubeVersion: ">=1.32.0-0"
 keywords: [openshift, observability, perses, dashboards, cluster-observability-operator, olm]
 home: https://github.com/ephico2real2/openshift-coo-helm
 sources:
