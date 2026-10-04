@@ -48,6 +48,25 @@ render --set uiPlugin.clusterHealthAnalyzer=false | grep -A1 'clusterHealthAnaly
   && ok "uiPlugin.clusterHealthAnalyzer=false reaches the UIPlugin" || bad "clusterHealthAnalyzer value"
 
 render --set operator.version=v1.5.3 >/dev/null 2>&1 && bad "the schema refuses a version with a v" || ok "the schema refuses a version with a v"
+
+# The post-uninstall cleanup (templates/50-cleanup.yaml).
+c="$(render -s templates/50-cleanup.yaml)"
+[[ "$(grep -c 'helm.sh/hook: post-delete' <<<"$c")" == 4 && "$(grep -c 'argocd.argoproj.io/hook: PostDelete' <<<"$c")" == 4 ]] \
+  && ok "cleanup: four post-delete hooks, for Helm and Argo CD" || bad "cleanup hooks"
+grep -q 'resourceNames: \["persesdashboard-editor-role","persesdashboard-viewer-role","persesdatasource-editor-role","persesdatasource-viewer-role","persesglobaldatasource-editor-role","persesglobaldatasource-viewer-role"\]' <<<"$c" \
+  && ok "cleanup: delete limited to COO's six team roles by name" || bad "cleanup role resourceNames"
+! grep -q 'customresourcedefinitions' <<<"$c" && ok "cleanup: no access to CRDs" || bad "cleanup must not touch CRDs"
+render -s templates/50-cleanup.yaml --set cleanup.consolePlugin=false | grep -q 'resources: \["consoles"\]' \
+  && bad "cleanup.consolePlugin=false grants nothing on the console config" || ok "cleanup.consolePlugin=false grants nothing on the console config"
+render -s templates/50-cleanup.yaml | grep -q 'resources: \["consoles"\]' && ok "cleanup grants patch on the console config by default" || bad "cleanup console rule missing"
+o="$(objects --set cleanup.enabled=false)"
+has "$o" "Job/coo-openshift-coo-cleanup" && bad "cleanup.enabled=false renders no cleanup" || ok "cleanup.enabled=false renders no cleanup"
+# Argo CD's Application targets COO's namespace, which the chart deletes: the Job must run elsewhere.
+argo="$(helm template coo "${CHART}" -n openshift-cluster-observability-operator --kube-version 1.35.0 2>&1)"
+grep -q "set cleanup.namespace to a namespace that survives" <<<"$argo" \
+  && ok "cleanup refuses to run in the namespace the chart deletes" || bad "cleanup in COO's namespace: ${argo:0:200}"
+helm template coo "${CHART}" -n openshift-cluster-observability-operator --kube-version 1.35.0 --set cleanup.namespace=platform-tools \
+  -s templates/50-cleanup.yaml 2>&1 | grep -q '^  namespace: platform-tools$' && ok "cleanup.namespace places the Job" || bad "cleanup.namespace"
 render --set operator.typo=1 >/dev/null 2>&1 && bad "the schema refuses an unknown key" || ok "the schema refuses an unknown key"
 
 # The three Jobs' scripts: bash syntax, and shellcheck when available.
@@ -69,6 +88,6 @@ for f in "${tmp}"/*.sh; do
     shellcheck -S warning -s bash "$f" >/dev/null && ok "shellcheck $(basename "$f" .sh)" || bad "shellcheck $(basename "$f" .sh): $(shellcheck -S warning -s bash -f gcc "$f" | head -5)"
   fi
 done
-[[ $n == 3 ]] && ok "three Job scripts checked" || bad "expected three Job scripts, found $n"
+[[ $n == 4 ]] && ok "four Job scripts checked" || bad "expected four Job scripts, found $n"
 
 [[ $fails == 0 ]] && echo "all chart tests passed" || { echo "${fails} failed"; exit 1; }

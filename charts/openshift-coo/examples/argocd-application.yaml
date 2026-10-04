@@ -18,6 +18,9 @@ spec:
       valuesObject:
         metricsAccess:
           groups: [system:authenticated]   # everyone who logs in sees dashboard data (no PHI/PII in metrics)
+        cleanup:
+          # The post-delete cleanup Job runs here: a namespace that survives the deletion (COO's own does not).
+          namespace: platform-tools
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-cluster-observability-operator

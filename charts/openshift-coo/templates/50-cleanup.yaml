@@ -1,0 +1,200 @@
+{{- /*
+Cleans up, after an uninstall, two things COO leaves behind (measured: docs/evidence/crc/10 and 11):
+- COO's six Perses team ClusterRoles (perses*-viewer-role, perses*-editor-role). Nothing owns them, so they outlive
+  COO and even its CRDs. A reinstall creates them again (docs/evidence/crc/12, section 3).
+- The entry monitoring-console-plugin in console.operator.openshift.io/cluster .spec.plugins, left behind after
+  `helm uninstall` while its ConsolePlugin is gone (with the Argo CD cascade delete COO removed it itself).
+
+It never deletes COO's CRDs: that would delete every application's Perses dashboards and datasources. OLM leaves
+CRDs by design.
+
+Runs after everything else is gone: Helm post-delete, Argo CD PostDelete (Argo CD 2.10 or later). Deleting the
+roles earlier could race COO, which is still installed until then. It runs in cleanup.namespace (default: the
+release's namespace), which must survive the uninstall: COO's own namespace is deleted with namespace.create.
+Its ServiceAccount and RBAC are hooks too, created with it and removed when it succeeds.
+*/ -}}
+{{- if .Values.cleanup.enabled }}
+{{- $ns := .Values.cleanup.namespace | default .Release.Namespace }}
+{{- if and .Values.namespace.create (eq $ns (include "openshift-coo.namespace" .)) }}
+{{- fail (printf "cleanup.namespace resolves to %s, which this chart deletes on uninstall (namespace.create=true); set cleanup.namespace to a namespace that survives the uninstall (for example platform-tools), or cleanup.enabled=false" $ns) }}
+{{- end }}
+{{- $name := printf "%s-cleanup" (include "openshift-coo.fullname" .) }}
+{{- $roles := list "persesdashboard-editor-role" "persesdashboard-viewer-role" "persesdatasource-editor-role" "persesdatasource-viewer-role" "persesglobaldatasource-editor-role" "persesglobaldatasource-viewer-role" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-delete
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: PostDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+---
+# Least privilege: delete only the six roles by name, patch only the cluster's console config, read the rest.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-delete
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: PostDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: {{ toJson $roles }}
+    verbs: ["get", "delete"]
+  # Is COO still installed anywhere? Then nothing is removed.
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["clusterserviceversions"]
+    verbs: ["list"]
+  {{- if .Values.cleanup.consolePlugin }}
+  - apiGroups: ["operator.openshift.io"]
+    resources: ["consoles"]
+    resourceNames: ["cluster"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["console.openshift.io"]
+    resources: ["consoleplugins"]
+    resourceNames: ["monitoring-console-plugin"]
+    verbs: ["get"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-delete
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: PostDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $ns }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-delete
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: PostDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ add .Values.cleanup.waitSeconds 120 }}
+  ttlSecondsAfterFinished: {{ .Values.jobs.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "openshift-coo.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- include "openshift-coo.jobPod" . | nindent 6 }}
+      containers:
+        - name: cleanup
+          {{- include "openshift-coo.jobContainer" . | nindent 10 }}
+          env:
+            - name: PACKAGE
+              value: {{ .Values.operator.package | quote }}
+            - name: ROLES
+              value: {{ join " " $roles | quote }}
+            - name: CONSOLE_PLUGIN
+              value: {{ .Values.cleanup.consolePlugin | quote }}
+            - name: WAIT_SECONDS
+              value: {{ .Values.cleanup.waitSeconds | quote }}
+          args:
+            - |
+              set -uo pipefail
+              log()  { printf '[cleanup %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+              fail() { printf '[cleanup] FAILED: %s\n' "$*" >&2; exit 1; }
+              DEADLINE=$(( $(date +%s) + WAIT_SECONDS ))
+              PLUGIN=monitoring-console-plugin
+
+              # Under Argo CD this Job and its RBAC are created together: wait until the grant is in effect.
+              first_role="${ROLES%% *}"
+              until oc auth can-i delete "clusterrole/${first_role}" >/dev/null 2>&1; do
+                [ "$(date +%s)" -ge "$DEADLINE" ] && fail "no permission to delete clusterrole/${first_role} after ${WAIT_SECONDS}s"
+                log "waiting for this Job's RBAC"
+                sleep 3
+              done
+
+              # COO is AllNamespaces, one per cluster. OLM's own CSV carries no olm.copiedFrom label; its copies do.
+              # If COO is still installed (another release, or by hand), its roles and console entry are in use.
+              csvs="$(oc get clusterserviceversions.operators.coreos.com -A \
+                  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.olm\.copiedFrom}{"\n"}{end}')" \
+                || fail "could not list ClusterServiceVersions"
+              owned=""
+              while read -r csv copied; do
+                case "$csv" in "${PACKAGE}.v"*) [ -z "${copied:-}" ] && owned="${owned} ${csv}" ;; esac
+              done <<<"$csvs"
+              if [ -n "$owned" ]; then
+                log "COO is still installed (${owned# }): nothing removed"
+                exit 0
+              fi
+
+              # 1. COO's Perses team roles: by name, and only while they still carry COO's labels.
+              for role in $ROLES; do
+                labels="$(oc get clusterrole "$role" --ignore-not-found \
+                  -o jsonpath='{.metadata.labels.app\.kubernetes\.io/created-by}/{.metadata.labels.app\.kubernetes\.io/component}')" \
+                  || fail "could not read clusterrole/${role}"
+                case "$labels" in
+                  "") log "clusterrole/${role}: absent" ;;
+                  perses-operator/rbac)
+                    oc delete clusterrole "$role" --ignore-not-found >/dev/null || fail "could not delete clusterrole/${role}"
+                    log "clusterrole/${role}: deleted" ;;
+                  *) log "clusterrole/${role}: labels '${labels}' are not COO's, left alone" ;;
+                esac
+              done
+
+              # 2. The console's plugin entry: only ours, only once its ConsolePlugin is gone. The JSON patch tests the
+              #    entry at its index before removing it, so a concurrent change to the list makes it fail, not misfire.
+              if [ "$CONSOLE_PLUGIN" != "true" ]; then
+                log "cleanup.consolePlugin is false: console plugin list left as is"
+                exit 0
+              fi
+              if [ -n "$(oc get consoleplugins.console.openshift.io "$PLUGIN" --ignore-not-found -o name)" ]; then
+                log "consoleplugin/${PLUGIN} still exists: its entry is left in place"
+                exit 0
+              fi
+              for attempt in 1 2 3 4 5; do
+                i=0; idx=""
+                while IFS= read -r p; do
+                  [ "$p" = "$PLUGIN" ] && { idx=$i; break; }
+                  i=$((i + 1))
+                done < <(oc get consoles.operator.openshift.io cluster -o jsonpath='{range .spec.plugins[*]}{@}{"\n"}{end}')
+                if [ -z "$idx" ]; then
+                  log "console plugin list: no ${PLUGIN} entry"
+                  exit 0
+                fi
+                if oc patch consoles.operator.openshift.io cluster --type json \
+                     -p "[{\"op\":\"test\",\"path\":\"/spec/plugins/${idx}\",\"value\":\"${PLUGIN}\"},{\"op\":\"remove\",\"path\":\"/spec/plugins/${idx}\"}]" >/dev/null; then
+                  log "console plugin list: removed ${PLUGIN} (index ${idx})"
+                  exit 0
+                fi
+                log "the plugin list changed while patching (attempt ${attempt}); reading it again"
+                sleep 2
+              done
+              fail "could not remove ${PLUGIN} from the console plugin list"
+{{- end }}

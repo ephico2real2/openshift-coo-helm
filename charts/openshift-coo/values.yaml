@@ -73,7 +73,20 @@ wait:
   waitSeconds: 600
   intervalSeconds: 10
 
-# The image of the three Jobs (reclaim, approver, gate): a shell and oc.
+# After an uninstall, removes what COO leaves behind that is safe to remove (README, Uninstall): COO's six Perses team
+# ClusterRoles, and, with consolePlugin, the monitoring-console-plugin entry in the console's plugin list once its
+# ConsolePlugin is gone. Never COO's CRDs: they hold every application's Perses dashboards. Nothing is removed while COO
+# is still installed. A Helm post-delete / Argo CD PostDelete hook (Argo CD 2.10 or later).
+cleanup:
+  enabled: true
+  # Patch the cluster's console config to drop that one entry (get/patch on consoles.operator.openshift.io "cluster").
+  consolePlugin: true
+  # Where the Job runs: a namespace that survives the uninstall. Empty: the release's namespace. Under Argo CD, whose
+  # Application targets COO's namespace (deleted with namespace.create), set it, for example to platform-tools.
+  namespace: ""
+  waitSeconds: 120
+
+# The image of the four Jobs (reclaim, approver, gate, cleanup): a shell and oc.
 jobs:
   image:
     repository: registry.redhat.io/openshift4/ose-cli
