@@ -140,14 +140,16 @@ spec:
                 sleep 3
               done
 
-              # COO is AllNamespaces, one per cluster. OLM's own CSV carries no olm.copiedFrom label; its copies do.
-              # If COO is still installed (another release, or by hand), its roles and console entry are in use.
-              csvs="$(oc get clusterserviceversions.operators.coreos.com -A \
-                  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.olm\.copiedFrom}{"\n"}{end}')" \
+              # COO is AllNamespaces, one per cluster. If it is still installed (another release, or by hand), its roles
+              # and console entry are in use. OLM copies every all-namespaces operator's CSV into every namespace (on
+              # CRC: 616 CSVs, 66.5 MiB of JSON, which got this container killed at 256 Mi), so the server filters
+              # them out: only OLM's own CSVs lack the olm.copiedFrom label (11 on CRC).
+              csvs="$(oc get clusterserviceversions.operators.coreos.com -A -l '!olm.copiedFrom' \
+                  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')" \
                 || fail "could not list ClusterServiceVersions"
               owned=""
-              while read -r csv copied; do
-                case "$csv" in "${PACKAGE}.v"*) [ -z "${copied:-}" ] && owned="${owned} ${csv}" ;; esac
+              while read -r csv; do
+                case "$csv" in "${PACKAGE}.v"*) owned="${owned} ${csv}" ;; esac
               done <<<"$csvs"
               if [ -n "$owned" ]; then
                 log "COO is still installed (${owned# }): nothing removed"

@@ -5,6 +5,10 @@ kind: Application
 metadata:
   name: openshift-coo
   namespace: openshift-gitops
+  # Deleting the Application deletes what it installed. Argo CD adds its own post-delete finalizers beside this one
+  # (they run the cleanup hook); never replace the list with a patch, or the cleanup is skipped (measured).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
