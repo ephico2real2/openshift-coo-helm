@@ -1,0 +1,8 @@
+# The settings openshift-ipsec-nas needs (its doc 60, "The cluster settings"):
+# - its alerts that read platform metrics fire only with kcs-ipsec exempt from namespace label enforcement;
+# - its alerts are delivered to a dedicated Alertmanager in openshift-user-workload-monitoring.
+config:
+  namespacesWithoutLabelEnforcement: [kcs-ipsec]
+  alertmanager:
+    enabled: true
+    enableAlertmanagerConfig: true

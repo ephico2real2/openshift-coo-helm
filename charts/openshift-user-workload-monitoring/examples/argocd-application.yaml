@@ -1,0 +1,28 @@
+# User workload monitoring's settings through Argo CD (OpenShift GitOps). The one ConfigMap lives in
+# openshift-user-workload-monitoring, which exists while user workload monitoring is enabled: no CreateNamespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openshift-user-workload-monitoring
+  namespace: openshift-gitops
+  # Deleting the Application deletes the ConfigMap; the operator then recreates it empty (the defaults).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ephico2real2/openshift-coo-helm.git
+    targetRevision: main
+    path: charts/openshift-user-workload-monitoring
+    helm:
+      valuesObject:
+        config:
+          namespacesWithoutLabelEnforcement: [kcs-ipsec]
+          alertmanager:
+            enabled: true
+            enableAlertmanagerConfig: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-user-workload-monitoring
+  syncPolicy:
+    automated: {}

@@ -1,0 +1,22 @@
+{{- /*
+The one object of this chart. The cluster-monitoring-operator creates it empty when it is missing and never updates
+it; it only reads it. So this chart owns it whole: every setting of user workload monitoring goes through `config`.
+It always lives in openshift-user-workload-monitoring, whatever the release's namespace.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-workload-monitoring-config
+  namespace: openshift-user-workload-monitoring
+  labels:
+    app.kubernetes.io/part-of: openshift-monitoring
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+{{- if .Values.config }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+{{- else }}
+data: {}
+{{- end }}

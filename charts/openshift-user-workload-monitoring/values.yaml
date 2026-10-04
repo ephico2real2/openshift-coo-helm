@@ -1,0 +1,4 @@
+# -- config.yaml of user-workload-monitoring-config, as YAML. Empty renders the operator's own default (data: {}).
+# The keys are those of UserWorkloadConfiguration in the cluster-monitoring-operator API reference:
+# https://github.com/openshift/cluster-monitoring-operator/blob/release-4.18/Documentation/api.md
+config: {}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "description": "UserWorkloadConfiguration: the same five keys in cluster-monitoring-operator release-4.18 to main.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alertmanager": { "type": "object" },
+        "prometheus": { "type": "object" },
+        "prometheusOperator": { "type": "object" },
+        "thanosRuler": { "type": "object" },
+        "namespacesWithoutLabelEnforcement": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

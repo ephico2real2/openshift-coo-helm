@@ -1,0 +1,16 @@
+apiVersion: v2
+name: openshift-user-workload-monitoring
+description: >-
+  The settings of OpenShift's user workload monitoring: the ConfigMap user-workload-monitoring-config in
+  openshift-user-workload-monitoring, declared in values instead of edited by hand.
+type: application
+version: 0.1.0
+appVersion: "4.18"
+# OpenShift 4.18 (Kubernetes 1.31) or later: namespacesWithoutLabelEnforcement first appears in 4.18.
+kubeVersion: ">=1.31.0-0"
+keywords: [openshift, monitoring, user-workload-monitoring, alertmanager]
+home: https://github.com/ephico2real2/openshift-coo-helm
+sources:
+  - https://github.com/ephico2real2/openshift-coo-helm/tree/main/charts/openshift-user-workload-monitoring
+maintainers:
+  - name: ephico2real2

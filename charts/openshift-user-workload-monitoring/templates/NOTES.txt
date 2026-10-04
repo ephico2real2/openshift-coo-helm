@@ -1,0 +1,9 @@
+user-workload-monitoring-config in openshift-user-workload-monitoring now holds:
+{{- if .Values.config }}
+{{ toYaml .Values.config | indent 2 }}
+{{- else }}
+  nothing (the operator's defaults)
+{{- end }}
+
+This chart owns the whole ConfigMap: every user workload monitoring setting of the cluster goes through its values.
+Check: oc get thanosruler,prometheus,alertmanager -n openshift-user-workload-monitoring
