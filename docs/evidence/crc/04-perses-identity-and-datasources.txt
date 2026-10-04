@@ -34,3 +34,8 @@ Perses stored queryParams {namespace: kcs-ipsec} on thanos-9092-test; that the c
   Thanos 9092 with queryParams namespace=<ns>; a 9091 datasource works only for cluster-monitoring-view holders.
 - Readers of the namespace see the application's own metrics, not platform metrics (the NFS requests/s column).
 - No shared credential exists anywhere: nothing to store, rotate or leak in a chart.
+
+## Superseded (note added 2026-10-04, not a measurement of this run)
+The first consequence above was replaced by decision 6a (docs/manual-install-findings.md): the Perses UI sends its
+data queries as POST, which port 9092 checks as create on pods, so namespace-only readers were refused on every panel
+(openshift-ipsec-nas docs/evidence/crc/41). Dashboards use port 9091; viewers hold cluster-monitoring-view.

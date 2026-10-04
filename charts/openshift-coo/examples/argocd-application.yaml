@@ -12,8 +12,8 @@ spec:
     targetRevision: main
     path: charts/openshift-coo
     helm:
-      # The UIPlugin CRD then comes from OLM, before the UIPlugin's wave. An Argo CD-managed copy would be deleted
-      # with the Application, and every UIPlugin with it.
+      # The UIPlugin CRD then comes from OLM, before the UIPlugin's wave (measured: first sync green with no COO CRD
+      # beforehand). Without it Argo CD would also track the CRD, and could delete it with the Application (not measured).
       skipCrds: true
       valuesObject:
         metricsAccess:

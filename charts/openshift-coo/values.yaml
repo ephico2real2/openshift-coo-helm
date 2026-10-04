@@ -1,6 +1,6 @@
 # openshift-coo: Red Hat's Cluster Observability Operator (COO) with Perses, hands-free.
-# Every choice below is measured on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3:
-# docs/manual-install-findings.md and docs/evidence/crc/.
+# The choices below rest on measurements on OpenShift Local (CRC 4.22.7) with COO 1.5.2 and 1.5.3:
+# docs/manual-install-findings.md and docs/evidence/crc/. The Jobs' budgets, image and TTL are defaults, not measured.
 #
 # WHERE THE RELEASE LIVES. The chart creates COO's namespace itself (namespace.create), with the label the
 # platform needs to scrape COO, so Helm's record of the release cannot live in it: install the release into a
@@ -14,12 +14,14 @@ namespace:
   # true: the chart creates it with openshift.io/cluster-monitoring: "true", so the platform Prometheus scrapes
   # COO (COO's CSV asks for it). `helm uninstall` then deletes the namespace, which removes the operator and its
   # CSV with it (OLM leaves a CSV behind when only the Subscription is deleted).
-  # false: the namespace already exists, carries that label, and holds no other OperatorGroup.
+  # false: the namespace already exists, carries that label, and holds one OperatorGroup with no targetNamespaces
+  # (the chart then renders none).
   create: true
 
 operator:
   # The COO version to install, and the ONLY version the approver approves. A newer version that OLM stages
-  # waits for a human; to upgrade, change this and upgrade the release (measured: 1.5.2 -> 1.5.3 in 47 s).
+  # waits for a human; to upgrade, change this and upgrade the release (measured: helm upgrade 1.5.2 -> 1.5.3
+  # deployed in 70 s, gate green: docs/evidence/crc/11-chart-on-crc.txt section 7).
   version: "1.5.3"
   channel: stable
   # The package as the catalog names it: the Subscription's spec.name and the prefix of every CSV name.
@@ -43,14 +45,16 @@ csvReclaim:
 # The monitoring UIPlugin: it runs the Perses server and adds Observe -> Dashboards (Perses) to the console.
 uiPlugin:
   perses: true
-  # Incident detection (health-analyzer), GA on OpenShift 4.19 and later, the chart's minimum. Keep it on: with Perses
-  # on and this off, COO deletes its own scrape grant (README, Known issues); platformScrapeRBAC below covers that too.
+  # Incident detection (health-analyzer), GA on OpenShift 4.19 and later, the chart's minimum. Keep it on: with this
+  # off (and the deprecated incidents off), COO deletes its own scrape grant (measured with Perses on; README, Known
+  # issues); platformScrapeRBAC below covers that too.
   clusterHealthAnalyzer: true
 
 # The chart's own grant for the platform Prometheus to scrape COO: COO's Role and RoleBinding of the same rules,
 # named prometheus-k8s, are deleted by COO itself in two measured cases (the UIPlugin with clusterHealthAnalyzer
-# off, and the UIPlugin's deletion). This pair carries the chart's name, so COO never deletes it, and COO stays
-# scraped whatever clusterHealthAnalyzer is. Keep it on (README, Known issues).
+# off, and the UIPlugin's deletion). This pair carries the chart's name, so COO never deletes it, and a grant stays
+# in place whatever clusterHealthAnalyzer is (measured: COO scraped throughout with it off, evidence 11 section 2).
+# Keep it on (README, Known issues).
 platformScrapeRBAC: true
 
 # Who may see the metrics behind application dashboards. Dashboards query Thanos Querier's port 9091, which
@@ -61,7 +65,9 @@ metricsAccess:
   groups: []
 
 # The post-install gate: returns when COO's CSV is Succeeded, the UIPlugin is Available, the console lists the
-# plugin, Perses is ready, and COO's self-monitoring RBAC exists; otherwise it fails and says which.
+# plugin, Perses is ready, the namespace carries openshift.io/cluster-monitoring=true, and a Role and RoleBinding
+# for the platform Prometheus exist (the chart's own with platformScrapeRBAC, else COO's prometheus-k8s);
+# otherwise it fails and says which.
 # Helm waits for hooks only up to its --timeout (default 5m): pass --timeout 15m.
 wait:
   waitSeconds: 600

@@ -77,7 +77,7 @@ monitoring-console-plugin entry removed by hand (05:00:58-05:01:40Z). Snapshot: 
     approver    05:21:35 InstallPlan install-gpwfj installs v1.5.3 -> approved -> Complete 05:21:53
     wait        05:22:15 ready
 
-## 9. Argo CD (OpenShift GitOps), charts/openshift-coo/examples/argocd-application.yaml at 1b5c62d (skipCrds: true)
+## 9. Argo CD (OpenShift GitOps), the chart at 1b5c62d (skipCrds: true); the Application's file was committed afterwards, in 1154125, as charts/openshift-coo/examples/argocd-application.yaml
   Run A, 05:23:41Z, cluster with COO's CRDs left by the previous uninstall, no namespace:
     +11 s OutOfSync/Progressing  waiting for completion of hook batch/Job/openshift-coo-approver and 2 more resources
     +42 s Synced/Healthy         waiting for completion of hook batch/Job/openshift-coo-wait

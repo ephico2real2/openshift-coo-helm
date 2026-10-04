@@ -107,15 +107,12 @@ spec:
 - Two controllers own objects with the same names: `pkg/controllers/operator/components.go` (self-monitoring) and `pkg/controllers/uiplugin/health_analyzer.go` (the health analyzer).
 - `pkg/controllers/uiplugin/components.go:133`: `deployHealthAnalyzer := incidentsEnabled || healthAnalyzerEnabled`.
 - Lines 145–146 register the health analyzer's `prometheus-k8s` Role and RoleBinding as optional on that condition, so they are deleted when it is false.
-- No public bug report was found.
+- No report of it was found in `rhobs/observability-operator`'s GitHub issues and pull requests (searched 2026-10-03 and 2026-10-04); Red Hat's issue tracker was not searched.
 
 **The fix, measured: `clusterHealthAnalyzer: enabled: true`.**
-- **It is the documented setting.** Red Hat documents it as *incident detection*, GA on OpenShift 4.19 and later ([UI plugins](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html-single/ui_plugins_for_red_hat_openshift_cluster_observability_operator/index)). The older field `incidents` still exists: COO 1.4 deprecated it in favour of `clusterHealthAnalyzer` ([release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/red_hat_openshift_cluster_observability_operator_release_notes/cluster-observability-operator-release-notes)). Measured: `clusterHealthAnalyzer` alone is enough ([06](evidence/crc/06-uiplugin-all-features.txt), with `incidents` off). `incidents` alone was not measured; by the source (`incidentsEnabled || healthAnalyzerEnabled`) it would be too.
+- **It is the documented setting.** Red Hat documents it as *incident detection* ([UI plugins](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html-single/ui_plugins_for_red_hat_openshift_cluster_observability_operator/index)), GA on OpenShift 4.19 and later from COO 1.3 ([release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/red_hat_openshift_cluster_observability_operator_release_notes/cluster-observability-operator-release-notes)). The older field `incidents` still exists: COO 1.4 deprecated it in favour of `clusterHealthAnalyzer` ([release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/red_hat_openshift_cluster_observability_operator_release_notes/cluster-observability-operator-release-notes)). Measured: `clusterHealthAnalyzer` alone is enough ([06](evidence/crc/06-uiplugin-all-features.txt), with `incidents` off). `incidents` alone was not measured; by the source (`incidentsEnabled || healthAnalyzerEnabled`) it would be too.
 - **The two definitions are identical** (same rules, same subject `openshift-monitoring/prometheus-k8s`). With the analyzer on, both controllers want the same object.
-- **No flapping:**
-  - the Role survived three forced reconciles and an operator restart;
-  - the audit log showed **no writes** to it afterwards;
-  - the platform scrapes COO again.
+- **No flapping, as far as recorded:** the Role was present at 21:48:57Z, after two more reconciles with `clusterHealthAnalyzer` on ([06](evidence/crc/06-uiplugin-all-features.txt)). Forced reconciles beyond those two, an operator restart, the audit log and scraping after the fix are not in the saved evidence.
 - `acm` is the fourth feature. It needs an Advanced Cluster Management hub's Alertmanager and Thanos URLs, and is not used.
 
 **What `clusterHealthAnalyzer` adds:**
@@ -162,9 +159,9 @@ What follows for teams' dashboards:
 | A `POST` query is checked as | `create` on **pods** in the namespace: the right to run workloads | `create` on **`prometheuses/api`** |
 | The Perses UI sends its data queries as | `POST`; there is no `GET` setting | `POST` |
 | Namespace-only reader | **Forbidden on every panel** | Forbidden (no `cluster-monitoring-view`) |
-| Reader holding `cluster-monitoring-view` | Forbidden | **every panel answers**, platform metrics included |
+| Reader holding `cluster-monitoring-view` | Forbidden (not measured: follows from the `create pods` check) | **every panel answers**, platform metrics included |
 
-`cluster-monitoring-view` holds exactly two rules: `get` on `namespaces`, and `get`/`create`/`update` on `prometheuses/api`. The last three are how Thanos's proxy names `GET`, `POST` and `PUT` queries. It is read access to metrics, nothing else.
+`cluster-monitoring-view` holds exactly two rules: `get` on `namespaces`, and `get`/`create`/`update` on `prometheuses/api` (resource name `k8s`). Thanos's proxy checks a `GET` query as `get` and a `POST` as `create` (both measured); `update` for `PUT` was not measured. It is read access to metrics, nothing else.
 
 **So:**
 - Application dashboards use a `PersesDatasource` on **9091**.
@@ -173,7 +170,7 @@ What follows for teams' dashboards:
 
 ## 7. Versions ([07](evidence/crc/07-percli-install.txt))
 
-COO 1.5 builds on Perses **v0.54.0**: `release-1.5`'s `go.mod` lists `github.com/perses/perses v0.54.0`, Prometheus plugin v0.58.0, and table and time-series plugins v0.13.0. The server image does not report a version. Use `percli` 0.54.0: [percli.md](percli.md).
+COO 1.5.2 and the `release-1.5` and `release-coo-1.5` branches build on Perses **v0.54.0**: their `go.mod` lists `github.com/perses/perses v0.54.0`, Prometheus plugin v0.58.0, and table and time-series plugins v0.13.0. COO v1.5.0 and v1.5.1 list v0.53.1, v0.57.0, v0.11.2 and v0.12.1. The server image does not report a version, so these are the operator's library versions, not the server's. Use `percli` 0.54.0 with COO 1.5.2 or later: [percli.md](percli.md).
 
 ## 8. What a hands-free chart must do (derived from the above)
 
@@ -193,5 +190,5 @@ COO 1.5 builds on Perses **v0.54.0**: `release-1.5`'s `go.mod` lists `github.com
    - **Uninstall** ([10](evidence/crc/10-lifecycle-uninstall-reinstall-upgrade.txt)): deleting the UIPlugin removes all it made but leaves the console's plugin entry; deleting the Subscription leaves the CSV `Succeeded` and unowned; the CRDs, their roles and COO's six Perses team roles always stay.
    - **Reinstall over a left-over CSV** ([10](evidence/crc/10-lifecycle-uninstall-reinstall-upgrade.txt) step 3-4): `ResolutionFailed` within 20 s and no InstallPlan; deleting the CSV stages one in 5 s. The chart's reclaim Job does it ([11](evidence/crc/11-chart-on-crc.txt) section 8).
    - **Upgrades within `stable`** ([10](evidence/crc/10-lifecycle-uninstall-reinstall-upgrade.txt) step 6): with 1.5.2 installed, the 1.5.3 plan was staged by the first sample, 5 s after 1.5.2 Succeeded, and it waits; approved, 47 s to `Succeeded`. The chart approves only `operator.version`.
-   - **A second fix for section 5:** the chart's own copy of the scrape grant, which COO never deletes, keeps COO scraped with `clusterHealthAnalyzer` off ([11](evidence/crc/11-chart-on-crc.txt) sections 2-3). The chart keeps `clusterHealthAnalyzer` on as well, and requires OpenShift 4.19, where Red Hat lists it as GA.
+   - **A second fix for section 5:** the chart's own copy of the scrape grant, which COO never deletes. With `clusterHealthAnalyzer` off and the chart's grant present, COO stayed scraped ([11](evidence/crc/11-chart-on-crc.txt) section 2); with neither grant, scraping also continued for the 3 min 44 s watched (section 3), so the scrape data alone does not show that the grant is needed. The chart keeps `clusterHealthAnalyzer` on as well, and requires OpenShift 4.19, where Red Hat lists it as GA.
    - **Whether the console adds a datasource's `queryParams`:** no longer needed. It mattered only for per-namespace data sources on port 9092, which decision 6a replaced (a `POST` there is checked as `create pods` whatever the parameters).

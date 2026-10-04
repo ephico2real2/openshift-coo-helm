@@ -7,8 +7,9 @@
 #   scripts/install-percli.sh                      # version 0.54.0 into ~/.local/bin and ~/.local/share/perses
 #   PERCLI_VERSION=0.54.0 PREFIX=/usr/local/bin PLUGINS_DIR=/usr/local/share/perses scripts/install-percli.sh
 #
-# 0.54.0 is the Perses version the Cluster Observability Operator 1.5 builds on (rhobs/observability-operator,
-# branch release-1.5, go.mod: github.com/perses/perses v0.54.0). Match percli to the cluster's Perses.
+# 0.54.0 is the Perses version in the go.mod of the Cluster Observability Operator 1.5.2 and of branch release-1.5
+# (rhobs/observability-operator: github.com/perses/perses v0.54.0; v1.5.0 and v1.5.1 list v0.53.1). COO's Perses
+# server reports no version. Match percli to that go.mod.
 set -euo pipefail
 
 VERSION="${PERCLI_VERSION:-0.54.0}"

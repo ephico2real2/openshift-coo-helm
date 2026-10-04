@@ -1,10 +1,10 @@
 # Converting a Grafana Dashboard to Perses
 
-How to turn an application's Grafana dashboard into a Perses dashboard for COO, delivered from the application's own chart. Every step and every pitfall below was measured on one real dashboard: *IPsec to the NAS* from [openshift-ipsec-nas](https://github.com/ephico2real2/openshift-ipsec-nas). Its 16 panels include stat charts with value mappings, a bar chart, time series and a table that merges 11 queries. It ran on CRC 4.22.7 with COO 1.5.3 (Perses 0.54.0). The worked example is linked at each step.
+How to turn an application's Grafana dashboard into a Perses dashboard for COO, delivered from the application's own chart. Every step and every pitfall below was measured on one real dashboard: *IPsec to the NAS* from [openshift-ipsec-nas](https://github.com/ephico2real2/openshift-ipsec-nas). Its 16 panels include stat charts with value mappings, a bar chart, time series and a table that merges 11 queries. It ran on CRC 4.22.7 with COO 1.5.3, converted with `percli` 0.54.0. The worked example is linked at each step.
 
 ## The steps
 
-**1. Install `percli` at the cluster's Perses version.** COO 1.5 builds on Perses **0.54.0**: [percli.md](percli.md). Its plugins must be **unpacked**.
+**1. Install `percli` at the cluster's Perses version.** COO 1.5.2 and the `release-1.5` branch list Perses **0.54.0** in `go.mod` (1.5.0 and 1.5.1: 0.53.1); COO's server reports no version: [percli.md](percli.md). Its plugins must be **unpacked**.
 
 **2. Convert, offline.** Keep the Grafana JSON as the **only source**. The Perses dashboard is generated from it, never edited by hand:
 
@@ -29,7 +29,7 @@ Measured with `percli` 0.54.0 on the ipsec dashboard ([evidence 08](evidence/crc
 |---|---|---|
 | **Every panel becomes a placeholder** reading `Migration from Grafana not supported !`, and `percli` still exits 0 | `--plugin.path` points at the release's packed `plugins-archive/` | Unpack the plugins ([percli.md](percli.md)); refuse any output that still contains a placeholder |
 | A warning `failed query migration: no plugins found matching target`, once per query | — | Harmless: all 27 PromQL expressions came out identical to the Grafana ones (compared, raw output) |
-| The Grafana data-source input `${DS_PROMETHEUS}` does not convert | Perses has no Grafana inputs | `--use-default-datasource`, then name your `PersesDatasource` on **every query** |
+| The Grafana data-source input `${DS_PROMETHEUS}` becomes a datasource variable, and every query names `${DS_PROMETHEUS}` | Perses has no Grafana inputs; `percli` maps the input to a variable | `--input DS_PROMETHEUS=<your PersesDatasource>`, which names it in every query; or `--use-default-datasource`, then name your `PersesDatasource` on **every query** |
 | **The variables (filters) query no data source**: in a namespace without a default data source, a filter sent no request at all | `percli` leaves variables without a data source, so they use the namespace's default one | Name your data source on every **variable** too |
 | **A table shows one entity in several rows** | Perses' table merge (`MergeSeries`) joins series only when their labels are equal. Queries labelled `node, pod` and `node, peer_id` beside queries labelled `node` gave three rows per node | Aggregate every table query `by` the same labels; move extra label columns to a table of their own |
 | A table's value columns are named `value #1`, `value #2`, … | By query number | Renumber the column settings if you remove or reorder queries |
@@ -93,7 +93,7 @@ What each choice is, measured ([manual-install findings](manual-install-findings
 
 | To | A viewer needs |
 |---|---|
-| Open the dashboard | `view` in the application's namespace. COO's Perses roles are aggregated into `view`, `edit` and `admin` (measured: `view` alone reads the dashboard, and cannot change it), so the application ships **no RoleBindings** |
+| Open the dashboard | `view` in the application's namespace. OLM aggregates the per-kind roles of COO's Perses CRDs into `view`, `edit` and `admin` (for example `persesdashboards.perses.dev-v1alpha2-view`, labelled `rbac.authorization.k8s.io/aggregate-to-view`; COO's six `perses*-viewer/editor-role` roles are not aggregated). Measured: `view` alone reads the dashboard, and cannot change it. So the application ships **no RoleBindings** |
 | See its data | `cluster-monitoring-view`, a platform grant |
 
 ## Verify it

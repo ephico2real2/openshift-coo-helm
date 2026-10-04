@@ -2,9 +2,9 @@
 
 `percli` is the command-line tool of [Perses](https://perses.dev), the dashboard tool in the Cluster Observability Operator (COO). Here it converts Grafana dashboards into Perses dashboards (`percli migrate`).
 
-**Use version 0.54.0.** COO 1.5 builds on Perses v0.54.0 (`rhobs/observability-operator`, branch `release-1.5`, `go.mod`: `github.com/perses/perses v0.54.0`). Keep `percli` at the cluster's Perses version: a newer one can write fields the cluster's Perses does not know.
+**Use version 0.54.0.** COO 1.5.2 and the `release-1.5` branch (1.5.3's release commit) list `github.com/perses/perses v0.54.0` in `rhobs/observability-operator`'s `go.mod`; v1.5.0 and v1.5.1 list v0.53.1. COO's Perses server is Red Hat's build and reports no version ([evidence 07](evidence/crc/07-percli-install.txt)), so 0.54.0 is the operator's Perses library version, not a version read from the server. Keep `percli` at that version: a newer one can write fields the cluster's Perses does not know.
 
-There are three ways to run it, all measured to give byte-identical output for the same dashboard:
+There are three ways to run it, all measured to convert the same dashboard into the same panels ([evidence 08](evidence/crc/08-percli-conversion.txt): 11 stat charts, 1 table, 3 time series, 1 bar chart, no placeholder; the outputs were not compared byte for byte):
 
 | Way | Needs | Best for |
 |---|---|---|
@@ -40,7 +40,7 @@ client:
     commit: 4c719fc19fa21d333797e84c4fe7e3d81c25f4f5
 ```
 
-Tested on macOS arm64, Linux arm64 and Linux amd64 (UBI 9).
+Tested on macOS arm64, Linux arm64 and Linux amd64 ([evidence 08](evidence/crc/08-percli-conversion.txt)).
 
 ## 2. By hand
 
@@ -102,7 +102,7 @@ podman exec percli /bin/percli migrate -f /work/dashboard.json --format cr --pro
 podman rm -f percli
 ```
 
-With `docker`, drop `:Z` (an SELinux relabel option podman understands). The mounted folder must be readable by UID 65532. `percli version` alone needs no server: `podman run --rm --entrypoint /bin/percli docker.io/persesdev/perses:v0.54.0 version`.
+`:Z` relabels the folder for SELinux (podman and Docker both accept it); drop it on a host without SELinux. The mounted folder must be readable by UID 65532. `percli version` alone needs no server: `podman run --rm --entrypoint /bin/percli docker.io/persesdev/perses:v0.54.0 version`.
 
 ## Converting a Grafana dashboard
 
@@ -113,11 +113,11 @@ percli migrate -f dashboard.json --format cr --project <namespace> \
 grep -c 'Migration from Grafana not supported' dashboard.perses.yaml   # must print 0
 ```
 
-- `--format cr` writes a `PersesDashboard` custom resource; `--project` sets its namespace (the Perses project).
+- `--format cr` writes a `PersesDashboard` custom resource in `perses.dev/v1alpha1`, which the API server reports as deprecated; `--project` sets its namespace (the Perses project). Ship `v1alpha2`, with the dashboard under `spec.config` ([Converting a Grafana dashboard to Perses](grafana-to-perses.md)).
 - **Offline conversion needs `--plugin.path`.** Without it: `offline migration requires --plugin.path to be specified, or use --online for server-side migration`.
 - `--online` converts through a Perses server instead (its `POST /api/migrate`, which on OpenShift takes your token).
-- **Offline and COO's server do not convert identically.** For our dashboard, 15 of 16 panels, the variables and the layout came out the same; the **table** differed. Offline `percli` 0.54.0 kept the value mappings (UP/DOWN, colours) and units, and named the value columns `value #1`, `value #2`, … COO's server (Red Hat's build, `rhobs/perses`) named them `Value #A`, `Value #B`, … (Grafana's query letters) and dropped the mappings and units. Check which names the console's table renders before relying on either.
-- A Grafana datasource input (`${DS_PROMETHEUS}`) does not convert. It becomes a placeholder list (`grafana`, `migration`, `not`, `supported`). Use `--use-default-datasource`, or `--input DS_PROMETHEUS=<datasource name>`.
+- **Offline and COO's server do not convert identically.** For our dashboard, 15 of 16 panels, the variables and the layout came out the same; the **table** differed. Offline `percli` 0.54.0 kept the value mappings (UP/DOWN, colours) and units, and named the value columns `value #1`, `value #2`, … COO's server (Red Hat's build, `rhobs/perses`) named them `Value #A`, `Value #B`, … (Grafana's query letters) and dropped the mappings and units. In the console, the table renders `percli`'s `value #N` names ([evidence 09](evidence/crc/09-console-perses-capture.txt): the per-node table shows its values); with the server's names the value columns were empty in the upstream Perses 0.54.0 UI ([openshift-ipsec-nas doc 61, Capture 2](https://github.com/ephico2real2/openshift-ipsec-nas/blob/main/docs/61-perses-dashboard-review.md#a3-what-each-panel-showed)).
+- A Grafana datasource input (`${DS_PROMETHEUS}`) becomes a datasource variable `DS_PROMETHEUS`, and every query names `${DS_PROMETHEUS}` as its datasource. `--input DS_PROMETHEUS=<datasource name>` names that datasource in every query instead; `--use-default-datasource` removes the reference, so queries use the project's default datasource. (Measured with `percli` 0.54.0 and unpacked plugins. The placeholder list `grafana`, `migration`, `not`, `supported` appears only with packed plugins: [evidence 08](evidence/crc/08-percli-conversion.txt).)
 - The conversion is best-effort ("Not all Grafana features have direct equivalents in Perses", Red Hat). Review every panel before you rely on it.
 
 ## Upgrading

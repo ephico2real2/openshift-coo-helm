@@ -6,7 +6,7 @@ It checks, in order, what was measured to matter (docs/evidence/crc/10-...):
 - the CSV phase, not the Subscription: after an approval the Subscription read AtLatestKnown while the CSV was
   still Pending;
 - the UIPlugin's Available condition, the console's plugin list, and Perses ready;
-- the namespace label and a grant for the platform Prometheus, without which COO is not scraped.
+- the namespace label and a grant for the platform Prometheus, without which it may not list COO's endpoints.
 */ -}}
 apiVersion: v1
 kind: ServiceAccount

@@ -7,7 +7,9 @@ stages nothing; deleting that CSV let OLM stage an InstallPlan within 5 s.
 The script is the openshift-grafana chart's csv-reclaim (group-sync-dashboard, reviewed twice, measured on CRC
 2026-09-18/19), unchanged. It deletes only a CSV of this package that is not an OLM copy, has no owner, is
 referenced by no Subscription and is settled (Succeeded/Failed), and only after OLM reports ResolutionFailed.
-A clean install pays one list and exits.
+A clean install pays one list and exits. For COO the no-owner test alone does not tell an orphan: the installed,
+Subscription-referenced CSV has no ownerReferences either (read on CRC: cluster-observability-operator.v1.5.3), so
+the script's "an OLM-managed CSV has an owner" does not hold here; the Subscription test is what spares a live CSV.
 
 With namespace.create (the default) `helm uninstall` deletes the namespace and the CSV with it, so this is for
 namespace.create=false. Helm weight -2, ahead of the approver; Argo CD wave -1, the Subscription's.

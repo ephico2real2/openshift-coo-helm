@@ -1,6 +1,6 @@
 COO {{ .Values.operator.version }} in {{ include "openshift-coo.namespace" . }}, with the monitoring UIPlugin (Perses: {{ .Values.uiPlugin.perses }}, incident detection: {{ .Values.uiPlugin.clusterHealthAnalyzer }}).
 
-  The gate's verdict:  oc logs -n {{ include "openshift-coo.namespace" . }} job/{{ include "openshift-coo.fullname" . }}-wait
+  The gate's verdict:  oc logs -n {{ include "openshift-coo.namespace" . }} job/{{ include "openshift-coo.fullname" . }}-wait   (kept {{ .Values.jobs.ttlSecondsAfterFinished }} s)
   Dashboards:          the console, Observe -> Dashboards (Perses)
   The operator:        oc get subscription,installplan,csv -n {{ include "openshift-coo.namespace" . }}
 {{- if .Values.metricsAccess.groups }}

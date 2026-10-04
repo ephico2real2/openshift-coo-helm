@@ -85,8 +85,10 @@
   plus 4 ClusterRoles GONE (the CSV's own); none added.
 
 ## 5. What a full uninstall (UIPlugin, Subscription, CSV) leaves on the cluster
-  CRDs: 18 (all 18 COO CRDs), ClusterRoles: 93 (per-kind admin/edit/view/crdview roles,
-  ownerReference = their CRD, label olm.managed), ClusterRoleBindings of COO: 0, APIServices: 5 (local, the CRDs'), webhooks: 0
+  CRDs: 18 (all 18 COO CRDs), ClusterRoles: 93 (84 per-kind admin/edit/view/crdview roles, ownerReference = their
+  CRD, label olm.managed; COO's 6 Perses team roles, no ownerReference; 3 olm.og.cluster-observability-operator.
+  admin/edit/view roles of the OperatorGroup left in place), ClusterRoleBindings of COO: 0, APIServices: 5 (local, the
+  CRDs'), webhooks: 0
   cluster consoleplugin.console.openshift.io/gitops-plugin
   cluster consoleplugin.console.openshift.io/monitoring-plugin
   cluster consoleplugin.console.openshift.io/networking-console-plugin

@@ -56,11 +56,11 @@ the operator is not scraped.
 - **Effect on authorization:** `oc auth can-i list endpoints|pods|services|endpointslices.discovery.k8s.io
   -n openshift-cluster-observability-operator --as system:serviceaccount:openshift-monitoring:prometheus-k8s` → `no` for all four.
 - **Effect on scraping, observed twice:** on a fresh install, with the objects deleted 54 s after the operator created them,
-  the operator was not scraped (`up{namespace="openshift-cluster-observability-operator"}`: 0 series). On an install that was
-  already being scraped, scraping continued at every sample for 3 min 44 s after both grants were gone (not watched longer;
-  why is not verified).
-- **Not affected with the health analyzer on:** with `clusterHealthAnalyzer.enabled: true` the Role survived three forced reconciles
-  and an operator restart, with no further writes to it in the audit log.
+  the operator was not scraped (`up{namespace="openshift-cluster-observability-operator"}`: 0 series; the time of that query
+  was not recorded). On an install that was already being scraped, with both grants gone, scraping continued at every sample
+  from 05:08:54 to 05:12:38Z (3 min 44 s; not watched longer; why is not verified).
+- **Not affected with the health analyzer on:** with `clusterHealthAnalyzer.enabled: true` the Role was present after two
+  further reconciles (21:48:57Z).
 
 ## Cause, from the source
 
@@ -98,10 +98,13 @@ So the two controllers manage one object; the UIPlugin controller deletes the op
 ## Limits of this report
 
 - One cluster: single-node CRC, OpenShift 4.22.7, COO 1.5.3. Not run on other versions or on multi-node clusters.
-- The source was read upstream at the refs above. Upstream has no `v1.5.3` tag, so the exact source of the 1.5.3 build was not
-  identified; the lines are identical on every 1.5 ref and on `main`.
-- **Also observed, cause not established:** deleting the UIPlugin (health analyzer on) also removed the operator's
-  `prometheus-k8s` Role and RoleBinding, which were still absent 34 s later. The source reading above does not explain this
-  case, and it was not investigated further.
+- The source was read upstream at the refs above. Upstream has no `v1.5.3` tag; `release-1.5` carries the release commit
+  `chore(release): 1.5.3 (#1266)` (`25ccb9e`), where the lines are the same. Whether Red Hat built 1.5.3 from it was not
+  verified. The lines are identical on `v1.5.2`, both 1.5 release branches and `main`; on `v1.5.0` and `v1.5.1` the same
+  code is there, but `NewOptionalUpdater` is at `pkg/reconciler/reconciler.go:114`, not `:97`.
+- **Also observed:** deleting the UIPlugin (health analyzer on) also removed the operator's `prometheus-k8s` Role and
+  RoleBinding, which were still absent 34 s later. A later read on the cluster shows why: with the health analyzer on, the
+  Role carries `ownerReferences` UIPlugin `monitoring`, `controller: true`, `blockOwnerDeletion: true`, so the garbage
+  collector deletes it with the UIPlugin. That deletion was not re-run after the read.
 - Searched this repository's issues and pull requests on 2026-10-04 ("prometheus-k8s", "health analyzer RBAC", "self-monitoring
   uiplugin", "clusterHealthAnalyzer"): no report of this found.
