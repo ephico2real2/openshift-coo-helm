@@ -24,7 +24,9 @@ grep -q '^  installPlanApproval: Manual$' <<<"$out" && ok "Manual approval" || b
 [[ "$(grep -c 'value: "cluster-observability-operator.v1.5.3"' <<<"$out")" == 2 ]] && ok "the approver and the gate target the pinned CSV" || bad "TARGET in approver and gate"
 grep -q 'openshift.io/cluster-monitoring: "true"' <<<"$out" && ok "the namespace carries the cluster-monitoring label" || bad "namespace label"
 
-render --kube-version 1.31.9 | grep -q "requires kubeVersion: >=1.32.0-0" && ok "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check" || bad "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check"
+# helm exits non-zero here by design; capture first (with pipefail, piping it would fail even on the right message).
+old="$(render --kube-version 1.31.9)"
+grep -q "requires kubeVersion: >=1.32.0-0" <<<"$old" && ok "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check" || bad "Kubernetes 1.31 (OpenShift 4.18) is refused by the version check: ${old}"
 render --kube-version 1.32.0 >/dev/null 2>&1 && ok "Kubernetes 1.32 (OpenShift 4.19) renders" || bad "Kubernetes 1.32 (OpenShift 4.19) renders"
 
 o="$(objects)"
