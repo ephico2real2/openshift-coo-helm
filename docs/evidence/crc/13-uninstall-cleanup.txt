@@ -1,0 +1,63 @@
+# The post-uninstall cleanup (templates/50-cleanup.yaml), chart 0.3.0, on CRC 4.22.7 with OpenShift GitOps
+# (Argo CD v3.4.7) and Helm v4.3.0, 2026-10-04 12:48-13:01Z. Release namespace / cleanup namespace: platform-tools.
+# "Snapshot" = the six team roles (selector app.kubernetes.io/created-by=perses-operator,app.kubernetes.io/component=rbac),
+# the monitoring-console-plugin entry in console.operator.openshift.io/cluster .spec.plugins, the ConsolePlugin, the COO
+# CRDs, and kcs-ipsec's PersesDashboard and PersesDatasource.
+
+## 1. First Argo CD attempt (12:48:27Z): the hook did not run - my test step
+  The Application got resources-finalizer.argocd.argoproj.io through `oc patch --type merge` on metadata.finalizers,
+  which replaces the whole list. The controller log shows resource deletion and no hook activity; the six roles stayed.
+  Argo CD v3.4.7 source: the controller adds post-delete-finalizer.argocd.argoproj.io and .../cleanup when the app has
+  PostDelete hooks (controller/appcontroller.go:1962-1967) and runs them only while present (:1364, :1398).
+  With the finalizer declared in the Application's own metadata, Argo CD's two were added beside it:
+    finalizers: ["resources-finalizer.argocd.argoproj.io","post-delete-finalizer.argocd.argoproj.io",
+                 "post-delete-finalizer.argocd.argoproj.io/cleanup"]
+
+## 2. Second attempt (12:52:21Z): the hook ran and its Job was killed
+  Controller: 12:53:03 "Created 4 PostDelete hooks", "Waiting for 1 PostDelete hooks to complete";
+              12:53:10 "Hook {batch Job platform-tools openshift-coo-cleanup} is degraded: Job has reached the specified
+              backoff limit", "Deleting 1 failed PostDelete hook(s) to allow retry"; the namespace's events show retry
+              pods fs2p7 (pulling at 12:53:18), qzxsq (created 12:53:24), mlc6c (12:53:31) and nc8nd (12:53:38); then
+              12:53:38 the hooks were deleted with the Application, and the last retry's pod could not mount its token
+              ("serviceaccounts \"openshift-coo-cleanup\" not found").
+  Each pod: container started, terminated about 4 s later, exit code 137, no log output.
+  Cause, measured:
+    oc get clusterserviceversions -A        -> 616 CSVs, 66.5 MiB of JSON (OLM copies all-namespaces CSVs everywhere)
+    oc get clusterserviceversions -A -l '!olm.copiedFrom'  -> 11 CSVs (OLM's own)
+  The Jobs' memory limit is 256 Mi. Fix: the server-side selector (commit 35a7e35).
+  Re-run in-cluster as plain objects (no hook annotations), COO not installed, 12:56Z: succeeded; the six roles deleted;
+  "console plugin list: no monitoring-console-plugin entry"; CRDs 18 and kcs-ipsec's 2 objects untouched.
+
+## 3. Argo CD, end to end (commit 35a7e35)
+  12:56:40 Application created from the example -> 12:57:32 Synced/Healthy/Succeeded
+  before delete:  team roles 6 | console entry 1 | ConsolePlugin 1 | COO CRDs 18 | kcs-ipsec 2 objects
+  12:57:34 delete -> the Application was gone after 53 s. Cleanup Job log:
+    [cleanup 12:58:23] clusterrole/persesdashboard-editor-role: deleted
+    [cleanup 12:58:23] clusterrole/persesdashboard-viewer-role: deleted
+    [cleanup 12:58:23] clusterrole/persesdatasource-editor-role: deleted
+    [cleanup 12:58:23] clusterrole/persesdatasource-viewer-role: deleted
+    [cleanup 12:58:23] clusterrole/persesglobaldatasource-editor-role: deleted
+    [cleanup 12:58:24] clusterrole/persesglobaldatasource-viewer-role: deleted
+    [cleanup 12:58:24] console plugin list: no monitoring-console-plugin entry   (COO had removed it, as in evidence 11 §9)
+  after:          team roles 0 | console entry 0 | ConsolePlugin 0 | COO CRDs 18 | kcs-ipsec 2 objects
+  console plugins: ["networking-console-plugin","monitoring-plugin","gitops-plugin","nmstate-console-plugin"]
+  hook objects left: 0 in platform-tools, 0 cluster-scoped
+
+## 4. Helm, end to end (commit 35a7e35)
+  12:58:43 helm install openshift-coo charts/openshift-coo -n platform-tools --set 'metricsAccess.groups={system:authenticated}'
+           -> deployed; gate 12:59:19 ready (v1.5.3). The install re-created the six team roles.
+  before uninstall: team roles 6 | console entry 1 | ConsolePlugin 1 | COO CRDs 18 | kcs-ipsec 2 objects
+  12:59:24 helm uninstall --wait -> returned after 26 s. Cleanup Job log:
+    [cleanup 12:59:46] clusterrole/persesdashboard-editor-role: deleted
+    [cleanup 12:59:46] clusterrole/persesdashboard-viewer-role: deleted
+    [cleanup 12:59:46] clusterrole/persesdatasource-editor-role: deleted
+    [cleanup 12:59:46] clusterrole/persesdatasource-viewer-role: deleted
+    [cleanup 12:59:47] clusterrole/persesglobaldatasource-editor-role: deleted
+    [cleanup 12:59:47] clusterrole/persesglobaldatasource-viewer-role: deleted
+    [cleanup 12:59:47] console plugin list: removed monitoring-console-plugin (index 4)
+  after:          team roles 0 | console entry 0 | ConsolePlugin 0 | COO CRDs 18 | kcs-ipsec 2 objects
+  console plugins: ["networking-console-plugin","monitoring-plugin","gitops-plugin","nmstate-console-plugin"]
+  hook objects left: 0 in platform-tools, 0 cluster-scoped; Helm releases in platform-tools: 0
+
+## 5. Restored through Argo CD, 13:01:33Z: Synced/Healthy at 35a7e35; team roles 6 and the console entry back;
+   ipsec-nas Synced/Healthy; PersesDashboard ipsec-nas Available=True.

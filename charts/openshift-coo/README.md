@@ -18,6 +18,7 @@ The behaviours below were measured on OpenShift Local (CRC 4.22.7) with COO 1.5.
 | Scrape grant | A Role and RoleBinding for the platform Prometheus, under the chart's name ([Known issues](#known-issues)) | |
 | Metrics access | `cluster-monitoring-view` for the groups in `metricsAccess.groups` (none by default) | |
 | Gate (hook) | Returns when the CSV is `Succeeded`, the UIPlugin `Available`, the plugin listed in the console, Perses ready, the namespace labelled and the scrape grant present; else fails naming which | clean install: `helm install` returned in **52 s** |
+| Cleanup (hook, on uninstall) | Removes COO's six unowned Perses team roles and the console's stale plugin entry; never the CRDs ([Uninstall](#uninstall)) | after `helm uninstall` and an Argo CD delete: both removed, CRDs and other apps' Perses objects untouched ([evidence 13](../../docs/evidence/crc/13-uninstall-cleanup.txt)) |
 
 ## Install
 
@@ -55,6 +56,8 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 | `platformScrapeRBAC` | `true` | The chart's own scrape grant for the platform Prometheus. Keep it on |
 | `metricsAccess.groups` | `[]` | Groups bound to `cluster-monitoring-view`, so they see the data behind dashboards. `[system:authenticated]`: everyone who logs in |
 | `csvReclaim.enabled` | `true` | The reclaim hook |
+| `cleanup.enabled`, `cleanup.consolePlugin` | `true`, `true` | The post-uninstall cleanup ([Uninstall](#uninstall)); `consolePlugin: false` leaves the console's plugin list alone and grants nothing on it |
+| `cleanup.namespace` | `""` (the release's namespace) | Where the cleanup Job runs; it must survive the uninstall. Set it under Argo CD (the example: `platform-tools`) |
 | `installPlanApprover.waitSeconds`, `wait.waitSeconds` | 300, 600 | The hooks' budgets |
 | `jobs.image` | `registry.redhat.io/openshift4/ose-cli:latest` | The Jobs' image: a shell and `oc` |
 
@@ -74,23 +77,22 @@ To upgrade, change `operator.version` in Git (or `--set`) and sync. Measured 1.5
 
 ## Uninstall
 
-`helm uninstall openshift-coo -n platform-tools` (or deleting the Argo CD Application with its resources finalizer; [the example](examples/argocd-application.yaml) sets none, so add `resources-finalizer.argocd.argoproj.io` first or delete with `argocd app delete --cascade`). Measured, both ways:
+`helm uninstall openshift-coo -n platform-tools`, or delete the Argo CD Application. [The example](examples/argocd-application.yaml) declares `resources-finalizer.argocd.argoproj.io` in its metadata; Argo CD adds its own post-delete finalizers beside it, which run the cleanup. Do not replace the finalizer list with a patch: the cleanup is then skipped (measured).
 
-| Removed | Left on the cluster |
-|---|---|
-| The namespace and everything in it: Subscription, **CSV**, operator, Perses; the UIPlugin; the chart's ClusterRoleBindings | The **18 COO CRDs** and their 5 APIServices: applications' `PersesDashboard`/`PersesDatasource` stay, with the CRDs |
-| | 84 ClusterRoles the CRDs own, and COO's 6 Perses team roles (`perses*-editor-role`, `perses*-viewer-role`), which nothing owns |
-| | After `helm uninstall`: the `monitoring-console-plugin` entry in `console.operator.openshift.io/cluster` `.spec.plugins` (its ConsolePlugin is gone). After the Argo CD deletion COO removed it itself |
+After everything else is deleted, a **cleanup Job** (a Helm `post-delete` / Argo CD `PostDelete` hook, `cleanup.enabled`) removes what COO leaves behind that is safe to remove. It runs in `cleanup.namespace` (default: the release's namespace), which must survive the uninstall; the chart refuses COO's own namespace there. It removes nothing while a COO CSV is still installed anywhere. Measured both ways ([evidence 13](../../docs/evidence/crc/13-uninstall-cleanup.txt)):
 
-To remove COO completely, after the uninstall:
+| Removed | By | Left on the cluster, on purpose |
+|---|---|---|
+| The namespace and everything in it: Subscription, **CSV**, operator, Perses; the UIPlugin; the chart's ClusterRoleBindings | the uninstall | The **18 COO CRDs**, their 5 APIServices and the 84 ClusterRoles they own. Deleting the CRDs would delete **every application's** Perses dashboards and data sources; OLM leaves CRDs by design |
+| COO's 6 Perses team roles (`perses*-editor-role`, `perses*-viewer-role`), which nothing owns | the cleanup Job: by name, only while they carry COO's labels; its `delete` is limited to these six names | |
+| The `monitoring-console-plugin` entry in `console.operator.openshift.io/cluster` `.spec.plugins`, once its ConsolePlugin is gone | the cleanup Job (`cleanup.consolePlugin`), with a JSON patch that tests the entry before removing it. Measured: removed after `helm uninstall`; after the Argo CD deletion COO had removed it itself | The other plugins in the list (measured: unchanged) |
+
+The Job's ServiceAccount and RBAC are hooks too, removed when it succeeds (measured: nothing left). A reinstall re-creates the team roles and the console entry (measured).
+
+To remove COO's CRDs as well, deliberately, after the uninstall (this deletes every application's Perses objects):
 
 ```bash
-oc get crd -o name | grep -E '\.monitoring\.rhobs$|\.perses\.dev$|\.observability\.openshift\.io$' | xargs oc delete   # deletes every app's Perses objects
-oc delete clusterrole persesdashboard-editor-role persesdashboard-viewer-role persesdatasource-editor-role \
-  persesdatasource-viewer-role persesglobaldatasource-editor-role persesglobaldatasource-viewer-role
-i=$(oc get console.operator.openshift.io cluster -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["spec"]["plugins"].index("monitoring-console-plugin"))')
-oc patch console.operator.openshift.io cluster --type json \
-  -p "[{\"op\":\"test\",\"path\":\"/spec/plugins/$i\",\"value\":\"monitoring-console-plugin\"},{\"op\":\"remove\",\"path\":\"/spec/plugins/$i\"}]"
+oc get crd -o name | grep -E '\.monitoring\.rhobs$|\.perses\.dev$|\.observability\.openshift\.io$' | xargs oc delete
 ```
 
 ## Known issues
@@ -131,7 +133,7 @@ What this release does **not** cover, stated so nobody relies on it:
 | **OpenShift 4.19 or later only** | The chart refuses Kubernetes below 1.32. 4.18 is not supported. |
 | **One test cluster** | Every run was on OpenShift Local: single node, OpenShift 4.22.7. Behaviour that needs several nodes was not observed. Other 4.19+ versions were not run. |
 | **COO 1.5.2 and 1.5.3 measured** | `crds/` holds 1.5.3's UIPlugin CRD. Red Hat's COO release notes end at 1.5.2, although 1.5.3 is the catalog head (read 2026-10-04). A later COO version stays unapproved until `operator.version` changes. Moving the chart to it means changing `appVersion` and `operator.version` together, then `scripts/refresh-uiplugin-crd.sh` (it reads `appVersion`), the tests and a cluster run. |
-| **Waiting on upstream** ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)) | The COO defect that deletes COO's own scrape grant, and three COO uninstall behaviours. The chart works around each one; none is fixed here. |
+| **Waiting on upstream** ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)) | The COO defect that deletes COO's own scrape grant. The chart works around it (`platformScrapeRBAC`); it is not fixed here. Two of COO's three uninstall leftovers are cleaned by the chart since 0.3.0 (the team roles and the console entry); the third behaviour, the UIPlugin's deletion taking COO's grant with it, needs no cleanup at uninstall |
 | **What the scrape grant proves** | With `clusterHealthAnalyzer` off, COO stayed scraped with the chart's grant. With neither grant, scraping also continued for the 3 min 44 s watched, so the scrape data alone does not show the grant is needed; the `can-i` check does show Prometheus loses the permission. |
 | **Not measured** | A hand-made UIPlugin blocking a Helm install; Argo CD deleting a CRD it tracks; a `PUT` query checked as `update`; the deprecated `incidents` field alone; the approver refusing a version OLM offers other than `operator.version`; port 9092 for a reader holding `cluster-monitoring-view`; the UIPlugin's deletion since the owner read ([evidence 12](../../docs/evidence/crc/12-review-reads.txt)). |
 | **No converter page yet** | The Grafana-to-Perses page ([#2](https://github.com/ephico2real2/openshift-coo-helm/issues/2)) is not built. `percli` by hand: [docs/percli.md](../../docs/percli.md). |
