@@ -122,6 +122,20 @@ oc patch console.operator.openshift.io cluster --type json \
 - **A UIPlugin made by hand blocks a Helm install** (Helm does not adopt an object without its release annotations; not measured here). The UIPlugin's name is fixed (the CRD: "UIPlugin name must be 'monitoring' if type is Monitoring"). Delete the hand-made one first, or adopt it into the release.
 - **Argo CD does not put back what you delete by hand** unless the Application has `selfHeal`. Deleting COO's CRDs deletes every application's Perses objects; sync those applications again afterwards (measured with openshift-ipsec-nas).
 
+## Limitations
+
+What this release does **not** cover, stated so nobody relies on it:
+
+| Limitation | Detail |
+|---|---|
+| **OpenShift 4.19 or later only** | The chart refuses Kubernetes below 1.32. 4.18 is not supported. |
+| **One test cluster** | Every run was on OpenShift Local: single node, OpenShift 4.22.7. Behaviour that needs several nodes was not observed. Other 4.19+ versions were not run. |
+| **COO 1.5.2 and 1.5.3 measured** | `crds/` holds 1.5.3's UIPlugin CRD. Red Hat's COO release notes end at 1.5.2, although 1.5.3 is the catalog head (read 2026-10-04). A later COO version stays unapproved until `operator.version` changes, and then needs `scripts/refresh-uiplugin-crd.sh`, the tests and a cluster run. |
+| **Waiting on upstream** ([#4](https://github.com/ephico2real2/openshift-coo-helm/issues/4)) | The COO defect that deletes COO's own scrape grant, and three COO uninstall behaviours. The chart works around each one; none is fixed here. |
+| **What the scrape grant proves** | With `clusterHealthAnalyzer` off, COO stayed scraped with the chart's grant. With neither grant, scraping also continued for the 3 min 44 s watched, so the scrape data alone does not show the grant is needed; the `can-i` check does show Prometheus loses the permission. |
+| **Not measured** | A hand-made UIPlugin blocking a Helm install; Argo CD deleting a CRD it tracks; a `PUT` query checked as `update`; the deprecated `incidents` field alone; the approver refusing a version OLM offers other than `operator.version`. |
+| **No converter page yet** | The Grafana-to-Perses page ([#2](https://github.com/ephico2real2/openshift-coo-helm/issues/2)) is not built. `percli` by hand: [docs/percli.md](../../docs/percli.md). |
+
 ## Tests
 
 ```bash

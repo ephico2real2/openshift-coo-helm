@@ -82,6 +82,12 @@ At `main` [`d53f293`](https://github.com/rhobs/observability-operator/tree/d53f2
 
 So the two controllers manage one object; the UIPlugin controller deletes the operator controller's copy.
 
+## A similar case, fixed
+
+[PR #931](https://github.com/rhobs/observability-operator/pull/931), "fix: rename clusterrolebinding used for monitoring plugin
+to avoid clash" (merged 2025-11-10, for Red Hat's COO-1314): two controllers created a ClusterRoleBinding of the same name,
+fixed by renaming one. This report is the same kind of clash, on a Role and RoleBinding.
+
 ## Possible fixes (for the maintainers to choose)
 
 - Give the health analyzer's Role and RoleBinding their own names; or
