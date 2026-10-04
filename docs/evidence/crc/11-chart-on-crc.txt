@@ -76,3 +76,33 @@ monitoring-console-plugin entry removed by hand (05:00:58-05:01:40Z). Snapshot: 
                 05:21:24 Subscription reports ResolutionFailed -> ORPHANED (no owner, unreferenced, not a copy) -> deleted
     approver    05:21:35 InstallPlan install-gpwfj installs v1.5.3 -> approved -> Complete 05:21:53
     wait        05:22:15 ready
+
+## 9. Argo CD (OpenShift GitOps), charts/openshift-coo/examples/argocd-application.yaml at 1b5c62d (skipCrds: true)
+  Run A, 05:23:41Z, cluster with COO's CRDs left by the previous uninstall, no namespace:
+    +11 s OutOfSync/Progressing  waiting for completion of hook batch/Job/openshift-coo-approver and 2 more resources
+    +42 s Synced/Healthy         waiting for completion of hook batch/Job/openshift-coo-wait
+    +52 s Synced/Healthy/Succeeded "successfully synced (no more tasks)"
+    syncResult: Namespace, OperatorGroup and UIPlugin created, Subscription applied, the RBAC reconciled, the three
+    hook Jobs Succeeded (Argo CD deletes them after success: HookSucceeded)
+  Application deleted with resources-finalizer.argocd.argoproj.io -> the delete returned after 55 s; namespace gone 05:25:46Z.
+    Leftovers: as after helm uninstall (section 6), except the console's monitoring-console-plugin entry, which was gone.
+    API server audit log, patch/update of console.operator.openshift.io/cluster by anyone but the console operator:
+      05:24:51 patch observability-operator-sa (COO) -> it removed the entry while still running
+      no such patch around the UIPlugin deletion by hand (04:43, evidence 10) or helm uninstall (05:14): the entry stayed
+      (05:01:21 patch kubeadmin = the manual clean-up of section 0; 05:02:23 and 05:18:40 patches by COO = adding it)
+  Run B, 05:26:53Z, after deleting the 18 COO CRDs and the 6 Perses team roles (0 COO CRDs left):
+    +11 s waiting for healthy state of /Namespace/openshift-cluster-observability-operator
+    +21-52 s waiting for completion of hook batch/Job/openshift-coo-approver ...
+    +62 s Synced/Healthy  waiting for completion of hook batch/Job/openshift-coo-wait
+    +72 s Synced/Healthy/Succeeded  -> first sync green with no CRD beforehand: the UIPlugin (wave 1) waited for OLM's
+    Checked afterwards: UIPlugin Reconciled=True Degraded=False Available=True; CSV v1.5.3 Succeeded; perses ready=1;
+    CRD uiplugins.observability.openshift.io labelled olm.managed=true; console.spec.plugins ends with monitoring-console-plugin
+
+## 10. The consumer: openshift-ipsec-nas on the chart's COO
+  Deleting COO's CRDs (run B's preparation) deleted kcs-ipsec's PersesDashboard and PersesDatasource. The ipsec-nas
+  Application (automated, no selfHeal) stayed OutOfSync with its last sync at 05:04:08Z: it does not re-create objects
+  deleted outside Git. One sync started by hand -> Running at 05:31:00Z, Synced/Healthy/Succeeded at 05:31:18Z.
+    PersesDashboard ipsec-nas Available=True; PersesDatasource ipsec-nas-thanos Available=True
+    COO's Perses API, GET /api/v1/projects/kcs-ipsec/dashboards/ipsec-nas -> the five sections
+      Summary, Tunnels per node, Checks (all should be 0), Per-node detail, History
+    POST /proxy/projects/kcs-ipsec/datasources/ipsec-nas-thanos/api/v1/query_range sum(ipsec_nas_tunnel_up) -> success, 1
