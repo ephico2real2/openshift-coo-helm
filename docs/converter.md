@@ -148,8 +148,9 @@ On CRC 4.22.7 on 2026-10-06 ([evidence 15](evidence/crc/15-converter.txt)), in `
 | The whole visit in a browser, as `developer` | The address leads to the OpenShift login, then the question above, then the page; `POST api/convert` answers `200`; no request failed |
 | The file downloaded in the browser | 23 panels identical to `percli migrate --input DS_PROMETHEUS=ipsec-nas-thanos` run in the pod; accepted by the cluster |
 | Health checks in the first 4 minutes of a pod | 1 request in the page's log, the start-up check; no restart. Before the change, with a readiness check every 10 s: 60 in 10 minutes |
+| Deployed by Argo CD v3.5.3: the two values added to the Application, over the objects applied by hand | Synced and Healthy 53 s after the patch; Argo CD tracks the 6 objects; the visit in a browser repeated: `200`, 23 panels identical to `percli` |
 
-**Not measured:** the downloaded dashboard opened in the console, the page deployed by Argo CD's sync, a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
+**Not measured:** the downloaded dashboard opened in the console, a first install by Argo CD into a namespace without the objects (the lab's were applied by hand first), a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
 
 ## Tests
 
