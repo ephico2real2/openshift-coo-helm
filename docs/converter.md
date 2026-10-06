@@ -3,12 +3,10 @@
 A web page, served from the cluster, that turns a Grafana dashboard into a Perses dashboard: upload the Grafana JSON, read what converted, download a `PersesDashboard` for your namespace. No `percli` to install and no cluster access needed to convert. It is an optional part of the [openshift-coo chart](../charts/openshift-coo/README.md), which also brings Perses itself (issue #2).
 
 <!-- markdownlint-disable MD033 -->
-| Light | Dark |
-| --- | --- |
-| <img alt="The converter page, light theme, after converting the IPsec to the NAS dashboard for namespace kcs-ipsec with the datasource ipsec-nas-thanos: 23 of 23 panels converted (1 bar chart, 16 stat charts, 3 tables, 3 time series) in 6 sections; two adjustments listed; a Download and a Copy button; a table of every panel with its Grafana type, its Perses chart, and what to check, such as value mappings and transformations; and the start of the PersesDashboard YAML." src="images/converter-page.light.png"> | <img alt="The same converter page and result in the dark theme." src="images/converter-page.dark.png"> |
+<img alt="The converter page after converting the IPsec to the NAS dashboard for namespace kcs-ipsec with the datasource ipsec-nas-thanos: 23 of 23 panels converted (1 bar chart, 16 stat charts, 3 tables, 3 time series) in 6 sections; two adjustments listed; a Download and a Copy button; a table of every panel with its Grafana type, its Perses chart, and what to check, such as value mappings and transformations; and the start of the PersesDashboard YAML." src="images/converter-page.light.png">
 <!-- markdownlint-enable MD033 -->
 
-*The page after one conversion, captured on CRC on 2026-10-06 in a browser, through the Route, logged in as `developer`.*
+*The page after one conversion, captured on CRC on 2026-10-06 in a browser, through the Route, logged in as `developer`. The dark captures are beside the light ones in [`images/`](images/).*
 
 ## Turn it on
 
@@ -52,9 +50,7 @@ One visit, captured on CRC on 2026-10-06 by [`tests/capture-converter-page.py`](
 
 **2. The input:** the Grafana file, the namespace, a resource name, a datasource name, and the box that adds that datasource.
 
-| Light | Dark |
-| --- | --- |
-| <img alt="The converter form filled in, light theme. 1, the Grafana dashboard: the file ipsec-nas.json is chosen. 2, where it goes: namespace kcs-ipsec, resource name ipsec-nas, datasource ipsec-nas-thanos, output PersesDashboard resource (YAML), and the box Also add the PersesDatasource of that name is ticked. A Convert button." src="images/converter-form.light.png"> | <img alt="The same filled form in the dark theme." src="images/converter-form.dark.png"> |
+<img alt="The converter form filled in. 1, the Grafana dashboard: the file ipsec-nas.json is chosen. 2, where it goes: namespace kcs-ipsec, resource name ipsec-nas, datasource ipsec-nas-thanos, output PersesDashboard resource (YAML), and the box Also add the PersesDatasource of that name is ticked. A Convert button." src="images/converter-form.light.png">
 
 **3. The output** is the picture at the top of this document: the summary, what was adjusted, the Download and Copy buttons, every panel, and the start of the file.
 
