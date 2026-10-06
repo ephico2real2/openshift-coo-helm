@@ -83,3 +83,24 @@ deployment tracking-id: openshift-coo:apps/Deployment:platform-tools/perses-conv
 ### the same visit in a browser after the sync (tests/capture-converter-page.py)
 after the login, the browser is at: https://perses-converter-platform-tools.apps-crc.testing/
 POST api/convert -> 200 | 23 of 23 panels converted; failed requests: none; download vs percli in the pod: 23 panels identical
+
+### 2026-10-06T22:21:48Z a first install by Argo CD into a namespace that holds nothing of the converter
+# Step 1: converter.enabled=false in the Application's valuesObject (oc patch, as above). The Application syncs automatically and does not prune:
+22:21:48 Synced Healthy, converter objects tracked: 6, requiring pruning: 0
+22:21:59 OutOfSync Healthy, tracked: 6, requiring pruning: 6     <- Argo CD keeps them; the Deployment was still ready 1/1
+# Step 2: the six objects deleted by name
+$ oc delete deployment/perses-converter service/perses-converter route.route.openshift.io/perses-converter networkpolicy.networking.k8s.io/perses-converter serviceaccount/perses-converter configmap/perses-converter -n platform-tools
+objects of the converter left in platform-tools (deploy, svc, route, networkpolicy, sa, cm, pods, secret): 0; the address answered no HTTP status; Application Synced Healthy, tracked: 0
+# Step 3: converter.enabled=true again
+22:22:36 +0s   Synced Healthy Succeeded, tracked 0, ready 0
+22:22:41 +5s   OutOfSync Healthy Running, tracked 6, ready 0
+22:22:57 +21s  Synced Progressing Running, tracked 6, ready 0
+22:23:07 +31s  Synced Healthy Running, tracked 6, ready 1
+22:23:13 +37s  Synced Healthy Succeeded, tracked 6, ready 1
+ConfigMap, Service, ServiceAccount, Deployment, NetworkPolicy, Route perses-converter: Synced
+pod perses-converter-548ccdb98-td4pg: created 2026-10-06T22:22:54Z, containers ready true true true, restarts 0 0 0
+the address without a login: http 302 -> https://oauth-openshift.apps-crc.testing/oauth/authorize
+### the visit in a browser after that install (tests/capture-converter-page.py)
+after the login, the browser is at: https://perses-converter-platform-tools.apps-crc.testing/
+POST api/convert -> 200 | 23 of 23 panels converted; failed requests: none
+percli in the new pod: 23 panels, placeholders 0; the browser's download vs percli: identical

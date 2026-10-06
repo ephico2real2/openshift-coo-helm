@@ -20,6 +20,8 @@ converter:
 
 With Helm, add those values to the release. With Argo CD, add them to the Application's `valuesObject` (the [example](../charts/openshift-coo/examples/argocd-application.yaml) shows them).
 
+**To turn it off under Argo CD,** set `converter.enabled: false` and prune: an Application that syncs automatically without `prune` keeps the six objects, and the page stays up (measured).
+
 **Check it:**
 
 ```bash
@@ -149,8 +151,10 @@ On CRC 4.22.7 on 2026-10-06 ([evidence 15](evidence/crc/15-converter.txt)), in `
 | The file downloaded in the browser | 23 panels identical to `percli migrate --input DS_PROMETHEUS=ipsec-nas-thanos` run in the pod; accepted by the cluster |
 | Health checks in the first 4 minutes of a pod | 1 request in the page's log, the start-up check; no restart. Before the change, with a readiness check every 10 s: 60 in 10 minutes |
 | Deployed by Argo CD v3.5.3: the two values added to the Application, over the objects applied by hand | Synced and Healthy 53 s after the patch; Argo CD tracks the 6 objects; the visit in a browser repeated: `200`, 23 panels identical to `percli` |
+| A first install by Argo CD: the six objects deleted, then `converter.enabled: true` | Synced and Healthy, the pod ready, 37 s after the value was set; the visit in a browser repeated: `200`, 23 panels identical to `percli` in the new pod |
+| Turned off under Argo CD (`converter.enabled: false`), with automatic sync and no pruning | Argo CD keeps the six objects and reports them as requiring pruning; the page stays up until they are pruned or deleted |
 
-**Not measured:** the downloaded dashboard opened in the console, a first install by Argo CD into a namespace without the objects (the lab's were applied by hand first), a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
+**Not measured:** the downloaded dashboard opened in the console, a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
 
 ## Tests
 
