@@ -2,7 +2,7 @@
 # CRC 4.22.7 single node, COO 1.5.3 (Argo CD), namespace platform-tools. Deployed for the measurement with:
 #   helm template coo charts/openshift-coo -n platform-tools --set converter.enabled=true --set converter.namespace=platform-tools \
 #     -s templates/60-converter.yaml | oc apply -f -
-# Commands and output, in order. Not measured: the login through a browser, and the page inside Argo CD's sync.
+# Commands and output, in order. Not measured: the page inside Argo CD's sync, and a liveness check that fails.
 
 ### 2026-10-06T20:30:47Z the Route
 host=perses-converter-platform-tools.apps-crc.testing termination=reencrypt admitted=True
@@ -41,3 +41,25 @@ web /tmp entries: 0
 127.0.0.1 "POST /api/convert HTTP/1.1" 200 -
 127.0.0.1 "POST /api/convert HTTP/1.1" 400 -
 127.0.0.1 "POST /api/convert HTTP/1.1" 413 -
+
+### 2026-10-06T20:59:05Z health checks after the change to a start-up check and a 30-minute liveness check (converter.livenessPeriodSeconds: 1800)
+# before the change (readiness every 10 s on both served containers): 60 /readyz requests in the page's log in 10 minutes
+perses: startup none | liveness none | readiness none
+web: startup every 5s, up to 60 tries | liveness every 1800s, restart after 1 failure | readiness none
+oauth-proxy: startup every 5s, up to 60 tries | liveness every 1800s, restart after 1 failure | readiness none
+pod perses-converter-7f8c59d455-l7bpt started 2026-10-06T20:54:33Z; 4 minutes later: ready=true true true restarts=0 0 0
+requests in the page's log since the pod started, by path:
+   6 "GET /
+   1 "GET /readyz
+   6 "POST /api/convert
+### the whole visit in a browser (tests/capture-converter-page.py, Chromium, user developer)
+after opening the address, the browser is at: https://oauth-openshift.apps-crc.testing/oauth/authorize
+after the login (and, the first time, Authorize Access), the browser is at: https://perses-converter-platform-tools.apps-crc.testing/
+without a namespace: POST api/convert -> 400 | give the namespace the dashboard is for: lowercase letters, digits and '-', at most 63 characters
+POST api/convert -> 200 | 23 of 23 panels converted (1 BarChart, 16 StatChart, 3 Table, 3 TimeSeriesChart), in 6 sections. Datasource: ipsec-nas-thanos.
+downloaded ipsec-nas.persesdashboard.yaml 47318 bytes; failed requests: none
+### the browser's download against percli in the pod (percli migrate -f /dev/stdin --input DS_PROMETHEUS=ipsec-nas-thanos, in the perses container)
+before the fix (the page re-wrote the JSON in the browser): 18 differing lines, all the order of one panel's value mappings (0, 1, -1 against -1, 0, 1)
+after the fix (the page sends the text as given): 23 panels identical
+persesdashboard.perses.dev/ipsec-nas configured (server dry run)
+persesdatasource.perses.dev/ipsec-nas-thanos configured (server dry run)

@@ -130,13 +130,23 @@ spec:
           securityContext: *restricted
           resources:
             {{- toYaml .Values.converter.resources.web | nindent 12 }}
-          # Ready when the engine has unpacked its plugins and answers. The handler listens on the loopback, so
-          # the probe runs inside the container.
-          readinessProbe:
+          # At start only: the pod is Ready once the engine has unpacked its plugins and answers; the check then
+          # stops. The handler listens on the loopback, so the probes run inside the container.
+          startupProbe:
             exec:
               command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/readyz', timeout=4)"]
-            periodSeconds: 10
+            periodSeconds: 5
             timeoutSeconds: 5
+            failureThreshold: 60
+          # Afterwards, a rare check that the page still answers. A page that converts on request needs no more:
+          # every probe is a request the page has to serve and log. One failure restarts the container: at this
+          # interval the default of three would leave a hung page up for three intervals.
+          livenessProbe:
+            exec:
+              command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=4)"]
+            periodSeconds: {{ .Values.converter.livenessPeriodSeconds }}
+            timeoutSeconds: 5
+            failureThreshold: 1
           volumeMounts:
             - name: app
               mountPath: /app
@@ -163,12 +173,21 @@ spec:
           resources:
             requests: {cpu: 10m, memory: 32Mi}
             limits: {memory: 64Mi}
-          readinessProbe:
+          startupProbe:
             httpGet:
               path: /oauth/healthz
               port: https
               scheme: HTTPS
-            periodSeconds: 10
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: https
+              scheme: HTTPS
+            periodSeconds: {{ .Values.converter.livenessPeriodSeconds }}
+            timeoutSeconds: 5
+            failureThreshold: 1
           volumeMounts:
             - name: proxy-tls
               mountPath: /etc/tls/private

@@ -8,7 +8,7 @@ A web page, served from the cluster, that turns a Grafana dashboard into a Perse
 | <img alt="The converter page, light theme, after converting the IPsec to the NAS dashboard for namespace kcs-ipsec with the datasource ipsec-nas-thanos: 23 of 23 panels converted (1 bar chart, 16 stat charts, 3 tables, 3 time series) in 6 sections; two adjustments listed; a Download and a Copy button; a table of every panel with its Grafana type, its Perses chart, and what to check, such as value mappings and transformations; and the start of the PersesDashboard YAML." src="images/converter-page.light.png"> | <img alt="The same converter page and result in the dark theme." src="images/converter-page.dark.png"> |
 <!-- markdownlint-enable MD033 -->
 
-*The page after one conversion, captured on CRC on 2026-10-06 from the deployed pod.*
+*The page after one conversion, captured on CRC on 2026-10-06 in a browser, through the Route, logged in as `developer`.*
 
 ## Turn it on
 
@@ -38,6 +38,32 @@ Open that address. The OpenShift login appears first; any user who can log in ma
 3. Leave **Datasource** empty to use the namespace's default datasource, or give the name of a `PersesDatasource`: every query will then name it. Tick the box to also get that `PersesDatasource`, on Thanos Querier's port 9091.
 4. Press **Convert**, read the report, and **Download**.
 5. Commit the file to your application's repository, or apply it: `oc apply -f <file>`. The dashboard then appears under **Observe → Dashboards (Perses)** in that project.
+
+### In pictures
+
+One visit, captured on CRC on 2026-10-06 by [`tests/capture-converter-page.py`](../tests/capture-converter-page.py), which drives a browser through these steps.
+
+<!-- markdownlint-disable MD033 -->
+**1. The address sends you to the OpenShift login.** After it, the first time, OpenShift asks whether the page may read who you are; it asks for nothing else.
+
+| The login | The question, the first time |
+| --- | --- |
+| <img alt="The OpenShift login page reached from the converter's address: Log in with, and one button for each identity provider of the lab, developer and ldap-local." src="images/converter-login.light.png"> | <img alt="OpenShift's Authorize Access page: service account perses-converter in project platform-tools is requesting permission to access your account (developer). Requested permissions: user:info, read-only access to your user information, and user:check-access, read-only access to view your privileges. You will be redirected to the converter's address. Buttons: Allow selected permissions, Deny." src="images/converter-authorize.light.png"> |
+
+**2. The input:** the Grafana file, the namespace, a resource name, a datasource name, and the box that adds that datasource.
+
+| Light | Dark |
+| --- | --- |
+| <img alt="The converter form filled in, light theme. 1, the Grafana dashboard: the file ipsec-nas.json is chosen. 2, where it goes: namespace kcs-ipsec, resource name ipsec-nas, datasource ipsec-nas-thanos, output PersesDashboard resource (YAML), and the box Also add the PersesDatasource of that name is ticked. A Convert button." src="images/converter-form.light.png"> | <img alt="The same filled form in the dark theme." src="images/converter-form.dark.png"> |
+
+**3. The output** is the picture at the top of this document: the summary, what was adjusted, the Download and Copy buttons, every panel, and the start of the file.
+
+**A refusal says why.** Here the namespace was left empty:
+
+<img alt="The converter form with the file ipsec-nas.json chosen and every other field empty; under the Convert button, a red note: give the namespace the dashboard is for: lowercase letters, digits and '-', at most 63 characters." src="images/converter-refused.light.png" width="640">
+<!-- markdownlint-enable MD033 -->
+
+### The report
 
 The report lists every panel with its Grafana type and its Perses chart, and what to check by hand:
 
@@ -71,6 +97,13 @@ One pod with three containers. None of the images is built here.
 
 **What is not kept:** anything. The upload is parsed, converted and returned. The pod has a read-only root filesystem and no volume but memory, the request log has no bodies, and the login's session key is minted in memory at start (a restart signs everyone out; the next request logs them in again).
 
+**Health checks:** at start, a check every 5 seconds decides when the pod is Ready, and stops at its first success. After that the page and the login proxy are each checked every 30 minutes (`converter.livenessPeriodSeconds`; 900 is 15 minutes), and one failed check restarts that container. There is no other periodic check: the page converts on request, and every probe is a request it would have to serve and log. What this leaves out:
+
+- the engine has no check of its own. If its process ends, Kubernetes restarts it; while it is away a conversion answers `503` with the reason;
+- between two checks, a container that stops answering stays in the Service for up to 30 minutes.
+
+**The upload reaches the engine as the text you gave.** The page does not re-write the JSON in the browser: a browser moves keys that look like whole numbers ahead of the others, which changed the order of value mappings such as `-1`, `0`, `1` against `percli`.
+
 **The network policy:** in, only the routers, to the proxy's port. Out, DNS and TCP 443 and 6443, which the login needs. Converting needs no connection.
 
 ## The engine
@@ -94,6 +127,7 @@ This is the upstream image's server, not COO's own: COO's converter differs on t
 | `converter.enabled` | `false` | Deploy the page |
 | `converter.namespace` | empty: the release's namespace | Where it runs; it must exist |
 | `converter.persesVersion` | `0.54.0` | The engine's version |
+| `converter.livenessPeriodSeconds` | `1800` | Seconds between liveness checks, once the pod is up (30 minutes) |
 | `converter.maxUploadBytes` | `2097152` | The largest upload (2 MiB) |
 | `converter.thanosURL` | Thanos Querier, port 9091 | Written into the `PersesDatasource` the page can add |
 | `converter.route.host` | empty: the cluster picks it | The page's hostname |
@@ -115,14 +149,23 @@ On CRC 4.22.7 on 2026-10-06 ([evidence 15](evidence/crc/15-converter.txt)), in `
 | *IPsec to the NAS* converted in the pod | 23 of 23 panels; `spec.config` identical to `percli migrate --use-default-datasource` |
 | The downloaded resource | Accepted by the cluster (`oc apply --dry-run=server` in `kcs-ipsec`) |
 | Malformed JSON; a 2.2 MB upload | `400` with the reason; `413` with the limit |
+| The whole visit in a browser, as `developer` | The address leads to the OpenShift login, then the question above, then the page; `POST api/convert` answers `200`; no request failed |
+| The file downloaded in the browser | 23 panels identical to `percli migrate --input DS_PROMETHEUS=ipsec-nas-thanos` run in the pod; accepted by the cluster |
+| Health checks in the first 4 minutes of a pod | 1 request in the page's log, the start-up check; no restart. Before the change, with a readiness check every 10 s: 60 in 10 minutes |
 
-**Not measured:** the login through a browser to the end, the downloaded dashboard opened in the console, and the page deployed by Argo CD's sync.
+**Not measured:** the downloaded dashboard opened in the console, the page deployed by Argo CD's sync, a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
 
 ## Tests
 
 ```bash
 tests/test-chart.sh        # the chart's rendering, the converter included
 tests/test-converter.sh    # server.py against the official Perses image: needs podman or docker
+```
+
+To take the pictures again from a deployed page (needs Playwright with Chromium):
+
+```bash
+python3 tests/capture-converter-page.py https://perses-converter-platform-tools.apps-crc.testing tests/fixtures/ipsec-nas.json docs/images
 ```
 
 ## Change the page

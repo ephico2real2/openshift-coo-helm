@@ -159,10 +159,11 @@ $("form").addEventListener("submit", async (event) => {
     text = await file.text();
   }
   if (!text) return fail("Choose a Grafana dashboard JSON file, or paste the JSON.");
-  let grafana;
-  try { grafana = JSON.parse(text); } catch (e) { return fail("This is not valid JSON: " + e.message); }
+  try { JSON.parse(text); } catch (e) { return fail("This is not valid JSON: " + e.message); }
+  // The dashboard goes as the text it is. Parsed and written again here, keys that look like whole numbers
+  // would move ahead of the others ("0", "1", "-1"), and the engine keeps the order it is given.
   const body = JSON.stringify({
-    grafana, namespace: $("namespace").value, name: $("name").value, datasource: $("datasource").value,
+    grafana: text, namespace: $("namespace").value, name: $("name").value, datasource: $("datasource").value,
     output: $("output").value, includeDatasource: $("includeDatasource").checked,
   });
   $("go").disabled = true;
