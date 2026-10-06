@@ -81,6 +81,13 @@ grep -q -- '--web.listen-address=127.0.0.1:8080' <<<"$c" && grep -q -- '-upstrea
 [[ "$(grep -c 'mountPath: /var/run/secrets/kubernetes.io/serviceaccount' <<<"$c")" == 1 ]] && ok "the token is mounted in one container, the login proxy" || bad "converter token mount"
 grep -q 'readOnlyRootFilesystem: true' <<<"$c" && ! grep -q 'persistentVolumeClaim' <<<"$c" && ok "read-only root filesystem and no persistent volume" || bad "converter storage"
 grep -q 'termination: reencrypt' <<<"$c" && ok "the Route re-encrypts to the proxy" || bad "converter Route"
+grep -q 'grafana: text,' charts/openshift-coo/files/converter/index.html && ok "the page sends the dashboard as the text it was given, not re-written by the browser" || bad "page re-writes the upload"
+[[ "$(grep -c 'startupProbe:' <<<"$c")" == 2 && "$(grep -c 'livenessProbe:' <<<"$c")" == 2 ]] && ! grep -q 'readinessProbe:' <<<"$c" \
+  && ok "converter: a start-up check and a liveness check per served container, no periodic readiness check" || bad "converter probes"
+[[ "$(grep -A8 'livenessProbe:' <<<"$c" | grep -c 'periodSeconds: 1800')" == 2 && "$(grep -A8 'livenessProbe:' <<<"$c" | grep -c 'failureThreshold: 1$')" == 2 ]] \
+  && ok "the liveness checks run every 30 minutes by default, and one failure restarts the container" || bad "converter liveness period"
+render --set converter.enabled=true --set converter.livenessPeriodSeconds=900 -s templates/60-converter.yaml | grep -q 'periodSeconds: 900' \
+  && ok "converter.livenessPeriodSeconds sets the liveness interval" || bad "converter.livenessPeriodSeconds"
 grep -q 'policyTypes: \[Ingress, Egress\]' <<<"$c" && ok "the NetworkPolicy limits both directions" || bad "converter NetworkPolicy"
 render --set converter.enabled=true --set converter.networkPolicy.enabled=false -s templates/60-converter.yaml | grep -q 'kind: NetworkPolicy' \
   && bad "converter.networkPolicy.enabled=false renders none" || ok "converter.networkPolicy.enabled=false renders none"

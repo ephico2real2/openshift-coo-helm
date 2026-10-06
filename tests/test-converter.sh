@@ -60,6 +60,8 @@ check("the PersesDatasource for Thanos port 9091 is added on request", "\n---\na
 open(f"{tmp}/out.yaml", "w").write(content)
 
 st, out = post(raw=b"{not json");                                              check("malformed JSON is refused with the reason", st == 400 and "not valid JSON" in out.get("error", ""), str(out))
+as_text = post({"grafana": open(fixture).read(), "namespace": "kcs-ipsec", "output": "native"})
+check("the dashboard sent as text, the way the page sends it, converts to the same as percli", as_text[0] == 200 and json.loads(as_text[1]["content"])["spec"] == want)
 st, out = post({"grafana": {"title": "x"}, "namespace": "a"});                 check("a JSON that is not a dashboard is refused", st == 400 and "no 'panels' list" in out.get("error", ""), str(out))
 st, out = post({"grafana": grafana, "namespace": "Bad_Name"});                 check("an invalid namespace is refused", st == 400, str(out))
 st, out = post(raw=json.dumps({"grafana": {"panels": [], "pad": "x" * 2200000}, "namespace": "a"}).encode())

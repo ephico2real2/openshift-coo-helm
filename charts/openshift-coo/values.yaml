@@ -97,6 +97,10 @@ converter:
   # The Perses version that converts. Keep it at the Perses version of the installed COO: 0.54.0 is in the
   # go.mod of COO 1.5.2 and 1.5.3 (COO's own server reports no version).
   persesVersion: "0.54.0"
+  # How often the page and the login proxy are checked once the pod is up: every 30 minutes (900 is 15). One
+  # failed check restarts that container. A start-up check (every 5 s, until the first success) decides when
+  # the pod is Ready; there is no other periodic check.
+  livenessPeriodSeconds: 1800
   # The largest upload, in bytes (2 MiB). A Grafana dashboard is rarely above a few hundred KiB.
   maxUploadBytes: 2097152
   # The datasource URL written into a PersesDatasource the page can add: Thanos Querier's cluster-wide port.
