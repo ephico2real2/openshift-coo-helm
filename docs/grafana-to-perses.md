@@ -1,5 +1,8 @@
 # Converting a Grafana Dashboard to Perses
 
+> **No `percli` at hand?** The chart can serve a [converter page](converter.md) that does steps 2 to 4 below from a browser.
+
+
 How to turn an application's Grafana dashboard into a Perses dashboard for COO, delivered from the application's own chart. Every step and every pitfall below was measured on one real dashboard: *IPsec to the NAS* from [openshift-ipsec-nas](https://github.com/ephico2real2/openshift-ipsec-nas). Its 16 panels include stat charts with value mappings, a bar chart, time series and a table that merges 11 queries. It ran on CRC 4.22.7 with COO 1.5.3, converted with `percli` 0.54.0. The worked example is linked at each step.
 
 ## The steps

@@ -68,6 +68,7 @@ The sample objects, and how the dashboard was converted from Grafana: [docs/graf
 | [charts/openshift-user-workload-monitoring/README.md](charts/openshift-user-workload-monitoring/README.md) | **The user workload monitoring chart:** why it can own the ConfigMap, installing over the operator's (`--take-ownership --force-conflicts`), values, Argo CD, upgrade and uninstall |
 | [docs/manual-install-findings.md](docs/manual-install-findings.md) | COO installed by hand: the catalog, the Manual-approval install, what it adds to the cluster, enabling Perses, a COO defect and its fix (`clusterHealthAnalyzer`), how Perses reaches Thanos with each viewer's own token, the decision on Thanos 9091, and what a hands-free chart must do |
 | [docs/grafana-to-perses.md](docs/grafana-to-perses.md) | **Converting a Grafana dashboard to Perses:** the steps, what the converter gets wrong and how to fix it, the two objects an application ships, who can see it, and how to verify it, all measured on the ipsec dashboard |
+| [docs/converter.md](docs/converter.md) | **The Grafana-to-Perses converter page:** an optional part of the chart, a web page behind the OpenShift login that converts a Grafana dashboard and reports what converted; how to turn it on, use it, how it works, and what was measured |
 | [docs/percli.md](docs/percli.md) | Installing `percli` (the Perses CLI) on Linux and macOS: script, by hand, or the container image |
 | [docs/evidence/crc/](docs/evidence/crc/) | The saved command output behind every statement |
 

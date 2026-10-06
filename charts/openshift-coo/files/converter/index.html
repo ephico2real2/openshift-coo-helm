@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grafana to Perses</title>
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --ok: #0e6f68; --ok-wash: #e3f3f1; --warn: #a55a0b; --warn-wash: #fbf1e4; --bad: #b3261e; --bad-wash: #fbe9e7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --ok: #3fcfc0; --ok-wash: #122a28; --warn: #f0a53c; --warn-wash: #2a2014; --bad: #f2857c; --bad-wash: #2d1614;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; display: grid; gap: 24px; }
+h1 { font-size: 28px; line-height: 1.15; margin: 0; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+p { margin: 0; max-width: 72ch; }
+.muted { color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; display: grid; gap: 14px; }
+label { font-weight: 600; display: grid; gap: 4px; }
+label.inline { font-weight: 400; display: flex; gap: 8px; align-items: baseline; }
+label .hint { font-weight: 400; color: var(--muted); font-size: 13px; }
+input[type=text], select, textarea { font: inherit; color: inherit; background: var(--ground); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; width: 100%; }
+textarea { min-height: 130px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+.row { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+button { font: inherit; font-weight: 600; border: 1px solid var(--ok); background: var(--ok); color: var(--surface); border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+button.secondary { background: transparent; color: var(--ok); }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+.note { border-left: 3px solid var(--rule); padding: 6px 12px; font-size: 14px; }
+.note.bad { border-color: var(--bad); background: var(--bad-wash); }
+.note.warn { border-color: var(--warn); background: var(--warn-wash); }
+.note.ok { border-color: var(--ok); background: var(--ok-wash); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.ok { color: var(--ok); font-weight: 600; } td.bad { color: var(--bad); font-weight: 600; }
+pre { margin: 0; background: var(--ground); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; overflow: auto; max-height: 320px; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .92em; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Grafana to Perses</h1>
+    <p class="muted">Upload a Grafana dashboard and download it as a Perses dashboard for your namespace, with a report of what converted. Converted with Perses <strong>__PERSES_VERSION__</strong>. Nothing you upload is stored.</p>
+  </header>
+
+  <form class="card" id="form">
+    <h2>1. The Grafana dashboard</h2>
+    <label>Dashboard JSON file
+      <span class="hint">In Grafana: Dashboard → Share → Export → Save to file. At most <span id="limit"></span>.</span>
+      <input type="file" id="file" accept=".json,application/json">
+    </label>
+    <label>Or paste the JSON
+      <textarea id="paste" spellcheck="false" placeholder='{ "title": "...", "panels": [ ... ] }'></textarea>
+    </label>
+
+    <h2>2. Where it goes</h2>
+    <div class="row">
+      <label>Namespace
+        <span class="hint">The namespace (Perses project) the dashboard is for.</span>
+        <input type="text" id="namespace" autocomplete="off" placeholder="my-namespace">
+      </label>
+      <label>Resource name
+        <span class="hint">Empty: taken from the dashboard's uid or title.</span>
+        <input type="text" id="name" autocomplete="off" placeholder="my-dashboard">
+      </label>
+    </div>
+    <div class="row">
+      <label>Datasource
+        <span class="hint">Empty: the namespace's default datasource. Or the name of a PersesDatasource, which every query will then name.</span>
+        <input type="text" id="datasource" autocomplete="off" placeholder="my-thanos">
+      </label>
+      <label>Output
+        <span class="hint">The custom resource is what you commit to Git or <code>oc apply</code>.</span>
+        <select id="output">
+          <option value="cr">PersesDashboard resource (YAML)</option>
+          <option value="native">Native Perses dashboard (JSON)</option>
+        </select>
+      </label>
+    </div>
+    <label class="inline"><input type="checkbox" id="includeDatasource"> <span>Also add the PersesDatasource of that name, for OpenShift's metrics (Thanos Querier, port 9091). Viewers need <code>cluster-monitoring-view</code>.</span></label>
+
+    <div><button type="submit" id="go">Convert</button></div>
+    <div class="note bad" id="error" role="alert" hidden></div>
+  </form>
+
+  <section class="card" id="result" hidden>
+    <h2>3. The result</h2>
+    <div class="note" id="summary"></div>
+    <div id="adjustments"></div>
+    <div><button type="button" id="download">Download</button> <button type="button" class="secondary" id="copy">Copy</button> <span class="muted" id="filename"></span></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Panel</th><th>Grafana type</th><th>Perses chart</th><th>Converted</th><th>To check</th></tr></thead>
+        <tbody id="panels"></tbody>
+      </table>
+    </div>
+    <p class="muted" id="variables"></p>
+    <pre id="preview"></pre>
+  </section>
+</main>
+<script>
+"use strict";
+const MAX = __MAX_UPLOAD_BYTES__;
+const $ = (id) => document.getElementById(id);
+let converted = null;
+$("limit").textContent = (MAX / 1048576).toFixed(1).replace(/\.0$/, "") + " MiB";
+
+function fail(message) { $("error").textContent = message; $("error").hidden = false; }
+
+function cell(row, text, cls) { const td = row.insertCell(); td.textContent = text; if (cls) td.className = cls; return td; }
+
+function show(data) {
+  converted = data;
+  const r = data.report;
+  const kinds = Object.entries(r.byKind).map(([k, n]) => n + " " + k).join(", ");
+  const summary = $("summary");
+  summary.className = "note " + (r.placeholders ? "warn" : "ok");
+  summary.textContent = r.converted + " of " + r.panels.length + " panels converted" + (kinds ? " (" + kinds + ")" : "") +
+    ", in " + r.sections.length + " section" + (r.sections.length === 1 ? "" : "s") + ". Datasource: " + r.datasource + "." +
+    (r.placeholders ? " " + r.placeholders + " panel" + (r.placeholders === 1 ? " is" : "s are") + " a placeholder: see the table." : "");
+  const adjustments = $("adjustments");
+  adjustments.replaceChildren();
+  for (const text of r.adjustments) { const d = document.createElement("div"); d.className = "note"; d.textContent = "Adjusted: " + text + "."; adjustments.append(d); }
+  const body = $("panels");
+  body.replaceChildren();
+  for (const p of r.panels) {
+    const row = body.insertRow();
+    cell(row, p.title || "(no title)"); cell(row, p.grafanaType || "?"); cell(row, p.persesKind);
+    cell(row, p.converted ? "yes" : "no", p.converted ? "ok" : "bad"); cell(row, p.notes.join(" · "));
+  }
+  $("variables").textContent = r.variables.length
+    ? "Variables: " + r.variables.map((v) => v.name + " (" + v.kind + ")").join(", ") + "."
+    : "No variables.";
+  $("filename").textContent = data.filename;
+  $("preview").textContent = data.content.length > 6000 ? data.content.slice(0, 6000) + "\n… (" + data.content.length + " characters; download for the whole file)" : data.content;
+  $("result").hidden = false;
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("error").hidden = true; $("result").hidden = true;
+  const file = $("file").files[0];
+  let text = $("paste").value.trim();
+  if (file) {
+    if (file.size > MAX) return fail("The file is " + file.size + " bytes; the limit is " + MAX + " bytes.");
+    text = await file.text();
+  }
+  if (!text) return fail("Choose a Grafana dashboard JSON file, or paste the JSON.");
+  let grafana;
+  try { grafana = JSON.parse(text); } catch (e) { return fail("This is not valid JSON: " + e.message); }
+  const body = JSON.stringify({
+    grafana, namespace: $("namespace").value, name: $("name").value, datasource: $("datasource").value,
+    output: $("output").value, includeDatasource: $("includeDatasource").checked,
+  });
+  $("go").disabled = true;
+  try {
+    const response = await fetch("api/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    const data = await response.json().catch(() => ({ error: "The server answered " + response.status + " without a message." }));
+    if (!response.ok) return fail(data.error || "The conversion failed (" + response.status + ").");
+    show(data);
+  } catch (e) {
+    fail("The request did not reach the converter: " + e.message);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+$("download").addEventListener("click", () => {
+  const url = URL.createObjectURL(new Blob([converted.content], { type: converted.contentType }));
+  const a = document.createElement("a"); a.href = url; a.download = converted.filename; a.click();
+  URL.revokeObjectURL(url);
+});
+$("copy").addEventListener("click", () => navigator.clipboard.writeText(converted.content));
+</script>
+</body>
+</html>

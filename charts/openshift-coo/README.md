@@ -63,6 +63,18 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 
 `values.schema.json` refuses unknown keys and a version written with a `v`.
 
+## The Grafana-to-Perses converter page
+
+Optional (`converter.enabled`, off by default): a web page, behind the OpenShift login, where a team uploads a Grafana dashboard and downloads it as a `PersesDashboard` for its namespace, with a report of what converted. It runs in `converter.namespace` (for example `platform-tools`) from the official Perses image and a small `server.py` mounted from a ConfigMap; nothing is built and nothing is stored.
+
+```yaml
+converter:
+  enabled: true
+  namespace: platform-tools
+```
+
+How to use it, how it works and what was measured: [docs/converter.md](../../docs/converter.md).
+
 ## Upgrade COO
 
 The approver approves **only `operator.version`**. With one version installed, OLM stages the next one and points the Subscription at it (`UpgradePending`): measured, the 1.5.3 plan was there at the first sample, 43 s after 1.5.2 was approved and 5 s after it Succeeded. The `openshift-grafana` approver takes the plan the Subscription references and approves it if it names the package ([its lines 211-212, 287, 295](https://github.com/ephico2real2/group-sync-dashboard/blob/main/charts/openshift-grafana/templates/02-installplan-approver.yaml#L211-L295), read, not run), so on a sync while such a plan is pending it would approve the upgrade. Here, that plan waits:

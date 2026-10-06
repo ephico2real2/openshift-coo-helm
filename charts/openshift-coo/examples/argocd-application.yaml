@@ -25,6 +25,10 @@ spec:
         cleanup:
           # The post-delete cleanup Job runs here: a namespace that survives the deletion (COO's own does not).
           namespace: platform-tools
+        # The Grafana-to-Perses converter page, in the same platform namespace (docs/converter.md).
+        converter:
+          enabled: true
+          namespace: platform-tools
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-cluster-observability-operator
