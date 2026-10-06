@@ -86,6 +86,42 @@ cleanup:
   namespace: ""
   waitSeconds: 120
 
+# A web page that converts a Grafana dashboard to a Perses dashboard: upload the Grafana JSON, read what
+# converted, download a PersesDashboard for a namespace (docs/converter.md). One shared instance for every team.
+# Off by default. It is guarded by the OpenShift login: any user who can log in may use it.
+converter:
+  enabled: false
+  # Where it runs: a platform namespace that exists already, for example platform-tools. Empty: the release's
+  # namespace. Under Argo CD, whose Application targets COO's namespace, set it.
+  namespace: ""
+  # The Perses version that converts. Keep it at the Perses version of the installed COO: 0.54.0 is in the
+  # go.mod of COO 1.5.2 and 1.5.3 (COO's own server reports no version).
+  persesVersion: "0.54.0"
+  # The largest upload, in bytes (2 MiB). A Grafana dashboard is rarely above a few hundred KiB.
+  maxUploadBytes: 2097152
+  # The datasource URL written into a PersesDatasource the page can add: Thanos Querier's cluster-wide port.
+  # The per-namespace port (9092) refuses the Perses UI's POST queries for readers.
+  thanosURL: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+  route:
+    # Empty: the cluster picks perses-converter-<namespace>.<apps domain>.
+    host: ""
+  # In: the routers only. Out: DNS and TCP 443 and 6443 (the login). Converting itself needs no connection.
+  networkPolicy:
+    enabled: true
+  images:
+    # The official Perses image: its server is the conversion engine. The tag is v<persesVersion>.
+    perses: docker.io/persesdev/perses
+    # Runs the page (files/converter/server.py, standard library only) and mints the session key.
+    python: registry.access.redhat.com/ubi9/python-312:latest
+    oauthProxy: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.15
+  resources:
+    perses:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {memory: 512Mi}
+    web:
+      requests: {cpu: 20m, memory: 64Mi}
+      limits: {memory: 256Mi}
+
 # The image of the four Jobs (reclaim, approver, gate, cleanup): a shell and oc.
 jobs:
   image:

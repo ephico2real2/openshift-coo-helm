@@ -1,0 +1,43 @@
+# The Grafana-to-Perses converter page on CRC (issue #2), measured 2026-10-06.
+# CRC 4.22.7 single node, COO 1.5.3 (Argo CD), namespace platform-tools. Deployed for the measurement with:
+#   helm template coo charts/openshift-coo -n platform-tools --set converter.enabled=true --set converter.namespace=platform-tools \
+#     -s templates/60-converter.yaml | oc apply -f -
+# Commands and output, in order. Not measured: the login through a browser, and the page inside Argo CD's sync.
+
+### 2026-10-06T20:30:47Z the Route
+host=perses-converter-platform-tools.apps-crc.testing termination=reencrypt admitted=True
+### without a login: the proxy sends the browser to the OpenShift login
+HTTP/1.1 302 Found
+location: https://oauth-openshift.apps-crc.testing/oauth/authorize?approval_prompt=force&client_id=system%3Aserviceaccount%3Aplatform-tools%3Aperses-converter&redirect_uri=https%3A%2F%2Fperses-converter-platform-tools.apps-crc.tes
+### the OAuth server accepts this client and its redirect:
+authorize -> http 200, redirected to 
+### the API cannot be called without a login either
+POST /api/convert -> http 302
+### inside the pod: no ServiceAccount token outside the proxy, read-only root
+web: (no token)
+oauth-proxy: ca.crt namespace token touch: cannot touch '/probe': Read-only file system 1001190000 
+### egress from the pod (web container): DNS and 443 allowed, anything else refused
+kubernetes.default.svc:443 -> connected
+thanos-querier.openshift-monitoring.svc:9091 -> refused: TimeoutError
+perses.openshift-cluster-observability-operator.svc:8080 -> refused: TimeoutError
+1.1.1.1:80 -> refused: TimeoutError
+### ingress from another pod in the cluster straight to the pod: refused
+command terminated with exit code 28
+### 2026-10-06T20:31:27Z converting through the deployed pod (port-forward to the web container, past the login)
+<title>Grafana to Perses</title> Converted with Perses <strong>0.54.0</strong> 
+ipsec-nas.json -> http 200, ipsec-nas-converted.persesdashboard.yaml: 23 of 23 panels {'BarChart': 1, 'StatChart': 16, 'Table': 3, 'TimeSeriesChart': 3}, 6 sections, 0 placeholders
+with a named datasource -> http 200; adjustments: ['dropped the variable DS_PROMETHEUS: every query now names the datasource ipsec-nas-thanos', 'the variable node now queries the datasource ipsec-nas-thanos']
+malformed JSON -> 400 the request is not valid JSON: Expecting property name enclosed in double quotes
+oversized (2.2 MB) -> 413 the upload is 2200056 bytes; the limit is 2097152 bytes
+downloaded PersesDashboard spec.config == percli migrate --use-default-datasource (offline, 0.54.0): True
+### the downloaded resource is accepted by the cluster (server-side dry run in kcs-ipsec)
+persesdashboard.perses.dev/ipsec-nas-converted created (server dry run)
+persesdatasource.perses.dev/ipsec-nas-thanos configured (server dry run)
+### nothing is stored: files written in the pod's writable places after the conversions
+web /tmp entries: 0
+127.0.0.1 "GET /readyz HTTP/1.1" 200 -
+127.0.0.1 "GET / HTTP/1.1" 200 -
+127.0.0.1 "POST /api/convert HTTP/1.1" 200 -
+127.0.0.1 "POST /api/convert HTTP/1.1" 200 -
+127.0.0.1 "POST /api/convert HTTP/1.1" 400 -
+127.0.0.1 "POST /api/convert HTTP/1.1" 413 -

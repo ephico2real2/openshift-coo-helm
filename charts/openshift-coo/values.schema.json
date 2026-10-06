@@ -53,6 +53,29 @@
         "waitSeconds": {"type": "integer", "minimum": 10}
       }
     },
+    "converter": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "namespace": {"type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$",
+                      "description": "Where the converter runs; empty: the release's namespace"},
+        "persesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+                          "description": "The Perses version, without the v: 0.54.0"},
+        "maxUploadBytes": {"type": "integer", "minimum": 1024},
+        "thanosURL": {"type": "string", "pattern": "^https?://"},
+        "route": {"type": "object", "additionalProperties": false, "properties": {"host": {"type": "string"}}},
+        "networkPolicy": {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}}},
+        "images": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"perses": {"type": "string", "minLength": 1}, "python": {"type": "string", "minLength": 1},
+                         "oauthProxy": {"type": "string", "minLength": 1}}
+        },
+        "resources": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"perses": {"type": "object"}, "web": {"type": "object"}}
+        }
+      }
+    },
     "jobs": {
       "type": "object", "additionalProperties": false,
       "properties": {

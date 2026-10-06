@@ -1,0 +1,304 @@
+{{- /*
+Optional: a web page that converts a Grafana dashboard to a Perses dashboard (issue #2). One shared instance for
+every team, in converter.namespace: upload a Grafana JSON, read what converted, download a perses.dev/v1alpha2
+PersesDashboard for a namespace. No percli to install and no cluster access needed to convert.
+
+One pod, three containers, none built here:
+- perses: the official Perses image, run as a server on the pod's loopback. Its /api/migrate is the engine; it
+  gives the same result as `percli migrate` offline (measured: docs/converter.md). It unpacks its plugins at
+  start, into an emptyDir.
+- web: files/converter/server.py and index.html, mounted from the ConfigMap below: the page, the report, the
+  custom resource. Loopback only.
+- oauth-proxy: the only port that leaves the pod. The OpenShift login guards the page; any user who can log in
+  may use it. Its certificate comes from the service CA, which the reencrypt Route trusts.
+
+Nothing is stored: no volume but memory, a read-only root filesystem, and a session key minted in memory at
+start (a restart signs everyone out, and the next request logs them in again).
+The ServiceAccount is the OAuth client; its token is mounted in the oauth-proxy container only.
+*/ -}}
+{{- if .Values.converter.enabled }}
+{{- $ns := .Values.converter.namespace | default .Release.Namespace }}
+{{- $name := "perses-converter" }}
+{{- $port := 8443 }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # The OAuth server accepts a redirect back to this Route's host.
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ $name }}"}}'
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  server.py: |
+{{ .Files.Get "files/converter/server.py" | trimSuffix "\n" | indent 4 }}
+  index.html: |
+{{ .Files.Get "files/converter/index.html" | trimSuffix "\n" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+    app: {{ $name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "openshift-coo.labels" . | nindent 8 }}
+        app: {{ $name }}
+      annotations:
+        # A change to the page or the handler restarts the pod.
+        checksum/files: {{ printf "%s%s" (.Files.Get "files/converter/server.py") (.Files.Get "files/converter/index.html") | sha256sum }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # The session key of the login, 32 random bytes, kept in memory only.
+        - name: session-key
+          image: {{ .Values.converter.images.python }}
+          command: ["python3", "-c", "import secrets, pathlib; pathlib.Path('/session/session_secret').write_text(secrets.token_hex(16))"]
+          securityContext: &restricted
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          volumeMounts:
+            - name: session
+              mountPath: /session
+      containers:
+        - name: perses
+          image: "{{ .Values.converter.images.perses }}:v{{ .Values.converter.persesVersion }}"
+          args:
+            - --config=/etc/perses/config.yaml
+            - --log.level=error
+            # The engine answers the web container only.
+            - --web.listen-address=127.0.0.1:8080
+          securityContext: *restricted
+          resources:
+            {{- toYaml .Values.converter.resources.perses | nindent 12 }}
+          volumeMounts:
+            # The image's plugins are packed; the server unpacks them here at start.
+            - name: plugins
+              mountPath: /etc/perses/plugins
+            - name: perses-data
+              mountPath: /perses
+            - name: tmp
+              mountPath: /tmp
+        - name: web
+          image: {{ .Values.converter.images.python }}
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: PERSES_URL
+              value: http://127.0.0.1:8080
+            - name: PERSES_VERSION
+              value: {{ .Values.converter.persesVersion | quote }}
+            - name: MAX_UPLOAD_BYTES
+              value: {{ .Values.converter.maxUploadBytes | int64 | quote }}
+            - name: THANOS_URL
+              value: {{ .Values.converter.thanosURL | quote }}
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          securityContext: *restricted
+          resources:
+            {{- toYaml .Values.converter.resources.web | nindent 12 }}
+          # Ready when the engine has unpacked its plugins and answers. The handler listens on the loopback, so
+          # the probe runs inside the container.
+          readinessProbe:
+            exec:
+              command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/readyz', timeout=4)"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+        - name: oauth-proxy
+          image: {{ .Values.converter.images.oauthProxy }}
+          args:
+            - -provider=openshift
+            - -https-address=:{{ $port }}
+            - -http-address=
+            - -email-domain=*
+            - -upstream=http://127.0.0.1:8081
+            - -tls-cert=/etc/tls/private/tls.crt
+            - -tls-key=/etc/tls/private/tls.key
+            - -cookie-secret-file=/session/session_secret
+            - -cookie-expire=4h
+            - -openshift-service-account={{ $name }}
+            - -skip-provider-button
+          ports:
+            - name: https
+              containerPort: {{ $port }}
+              protocol: TCP
+          securityContext: *restricted
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          readinessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+          volumeMounts:
+            - name: proxy-tls
+              mountPath: /etc/tls/private
+              readOnly: true
+            - name: session
+              mountPath: /session
+              readOnly: true
+            # The ServiceAccount's token, for this container only: it is the OAuth client's secret.
+            - name: sa-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+      volumes:
+        - name: app
+          configMap:
+            name: {{ $name }}
+        - name: plugins
+          emptyDir: {}
+        - name: perses-data
+          emptyDir:
+            medium: Memory
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: session
+          emptyDir:
+            medium: Memory
+        - name: proxy-tls
+          secret:
+            secretName: {{ $name }}-tls
+        - name: sa-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # The service CA issues the proxy's certificate into this Secret.
+    service.beta.openshift.io/serving-cert-secret-name: {{ $name }}-tls
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: https
+      port: {{ $port }}
+      targetPort: https
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  {{- with .Values.converter.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $name }}
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+{{- if .Values.converter.networkPolicy.enabled }}
+---
+# In: the routers only, to the proxy's port. Out: DNS, and TCP 443 and 6443, which the login needs (the OAuth
+# server's Route and the API server). Converting needs no connection at all: the engine is in the pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # On the pod network the routers come from openshift-ingress; with HostNetwork (bare metal, CRC) they
+        # arrive from the node, which OVN-Kubernetes exposes as the host-network policy group.
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/ingress: ""
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/host-network: ""
+      ports:
+        - port: {{ $port }}
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+        - {port: 5353, protocol: UDP}
+        - {port: 5353, protocol: TCP}
+    - ports:
+        - {port: 443, protocol: TCP}
+        - {port: 6443, protocol: TCP}
+{{- end }}
+{{- end }}

@@ -69,6 +69,25 @@ helm template coo "${CHART}" -n openshift-cluster-observability-operator --kube-
   -s templates/50-cleanup.yaml 2>&1 | grep -q '^  namespace: platform-tools$' && ok "cleanup.namespace places the Job" || bad "cleanup.namespace"
 render --set operator.typo=1 >/dev/null 2>&1 && bad "the schema refuses an unknown key" || ok "the schema refuses an unknown key"
 
+# The Grafana-to-Perses converter page (templates/60-converter.yaml): off by default, self-contained, locked down.
+o="$(objects)"
+has "$o" "Deployment/perses-converter" && bad "no converter by default" || ok "no converter by default"
+c="$(render --set converter.enabled=true --set converter.namespace=platform-tools -s templates/60-converter.yaml)"
+[[ "$(grep -c '^kind: ' <<<"$c")" == 6 ]] && ok "converter: ServiceAccount, ConfigMap, Deployment, Service, Route, NetworkPolicy" || bad "converter objects: $(grep '^kind: ' <<<"$c" | tr '\n' ' ')"
+[[ "$(grep -c '^  namespace: platform-tools$' <<<"$c")" == 6 ]] && ok "converter.namespace places every converter object" || bad "converter namespace"
+grep -q 'image: "docker.io/persesdev/perses:v0.54.0"' <<<"$c" && ok "the engine is the official Perses image at converter.persesVersion" || bad "converter Perses image"
+grep -q -- '--web.listen-address=127.0.0.1:8080' <<<"$c" && grep -q -- '-upstream=http://127.0.0.1:8081' <<<"$c" && ok "the engine and the page listen on the loopback; only the login proxy leaves the pod" || bad "converter listen addresses"
+[[ "$(grep -c 'automountServiceAccountToken: false' <<<"$c")" == 2 ]] && ok "no ServiceAccount token is mounted by default" || bad "converter automount"
+[[ "$(grep -c 'mountPath: /var/run/secrets/kubernetes.io/serviceaccount' <<<"$c")" == 1 ]] && ok "the token is mounted in one container, the login proxy" || bad "converter token mount"
+grep -q 'readOnlyRootFilesystem: true' <<<"$c" && ! grep -q 'persistentVolumeClaim' <<<"$c" && ok "read-only root filesystem and no persistent volume" || bad "converter storage"
+grep -q 'termination: reencrypt' <<<"$c" && ok "the Route re-encrypts to the proxy" || bad "converter Route"
+grep -q 'policyTypes: \[Ingress, Egress\]' <<<"$c" && ok "the NetworkPolicy limits both directions" || bad "converter NetworkPolicy"
+render --set converter.enabled=true --set converter.networkPolicy.enabled=false -s templates/60-converter.yaml | grep -q 'kind: NetworkPolicy' \
+  && bad "converter.networkPolicy.enabled=false renders none" || ok "converter.networkPolicy.enabled=false renders none"
+grep -q 'def convert(request):' <<<"$c" && grep -q '<title>Grafana to Perses</title>' <<<"$c" && ok "the ConfigMap carries server.py and index.html from files/converter" || bad "converter ConfigMap content"
+render --set converter.enabled=true --set converter.persesVersion=v0.54.0 >/dev/null 2>&1 && bad "the schema refuses a Perses version with a v" || ok "the schema refuses a Perses version with a v"
+python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "${CHART}/files/converter/server.py" 2>/dev/null && ok "server.py parses" || bad "server.py does not parse"
+
 # The three Jobs' scripts: bash syntax, and shellcheck when available.
 tmp="$(mktemp -d)"; trap 'rm -rf "${tmp}"' EXIT
 render --set 'metricsAccess.groups={x}' | python3 -c '
