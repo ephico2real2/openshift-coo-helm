@@ -82,8 +82,8 @@ render --set operator.typo=1 >/dev/null 2>&1 && bad "the schema refuses an unkno
 o="$(objects)"
 has "$o" "Deployment/perses-converter" && bad "no converter by default" || ok "no converter by default"
 c="$(render --set converter.enabled=true --set converter.namespace=platform-tools -s templates/60-converter.yaml)"
-[[ "$(grep -c '^kind: ' <<<"$c")" == 6 ]] && ok "converter: ServiceAccount, ConfigMap, Deployment, Service, Route, NetworkPolicy" || bad "converter objects: $(grep '^kind: ' <<<"$c" | tr '\n' ' ')"
-[[ "$(grep -c '^  namespace: platform-tools$' <<<"$c")" == 6 ]] && ok "converter.namespace places every converter object" || bad "converter namespace"
+[[ "$(grep -c '^kind: ' <<<"$c")" == 7 ]] && ok "converter: ServiceAccount, two ConfigMaps (the page, the trusted CA), Deployment, Service, Route, NetworkPolicy" || bad "converter objects: $(grep '^kind: ' <<<"$c" | tr '\n' ' ')"
+[[ "$(grep -c '^  namespace: platform-tools$' <<<"$c")" == 7 ]] && ok "converter.namespace places every converter object" || bad "converter namespace"
 grep -q 'image: "quay.io/ephico2real/persesdev/perses:v0.54.0"' <<<"$c" && ok "the engine is the Perses image at converter.persesVersion, from the quay.io copy" || bad "converter Perses image"
 grep -q -- '--web.listen-address=127.0.0.1:8080' <<<"$c" && grep -q -- '-upstream=http://127.0.0.1:8081' <<<"$c" && ok "the engine and the page listen on the loopback; only the login proxy leaves the pod" || bad "converter listen addresses"
 # The login proxy keeps the token it read at start as its OAuth client secret, so the token must outlive the pod's
@@ -92,6 +92,24 @@ nc="$(grep -v '^ *#' <<<"$c")"   # the template's comments name the field; the m
 { ! grep -q 'automountServiceAccountToken: false' <<<"$nc" && ! grep -q 'expirationSeconds' <<<"$nc" && ! grep -q 'serviceAccountToken' <<<"$nc"; } \
   && ok "the converter uses the default ServiceAccount token mount, with no short-lived token of its own" || bad "converter token mount"
 grep -q 'kind: RoleBinding' <<<"$c" && bad "the converter's ServiceAccount is bound to no Role" || ok "the converter's ServiceAccount is bound to no Role"
+# The CAs the login proxy trusts. On a cluster whose *.apps certificate is signed by a company CA the
+# ServiceAccount's ca.crt does not cover the OAuth route, and the login ends in 500 (x509: unknown authority).
+nc="$(grep -v '^ *#' <<<"$c")"
+{ grep -q 'name: perses-converter-trusted-ca' <<<"$nc" && grep -q 'config.openshift.io/inject-trusted-cabundle: "true"' <<<"$nc"; } \
+  && ok "an empty ConfigMap labelled for the trusted CA bundle, by default" || bad "trusted CA ConfigMap"
+[[ "$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "perses-converter-trusted-ca") | has("data")' <<<"$nc")" == "false" ]] \
+  && ok "the chart ships that ConfigMap with no data: OpenShift owns its contents" || bad "the trusted CA ConfigMap carries data"
+[[ "$(grep -o -- '-openshift-ca=[^ ]*' <<<"$nc" | tr '\n' ' ')" == "-openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt -openshift-ca=/etc/converter/ca/injected/ca-bundle.crt " ]] \
+  && ok "the proxy is named the ServiceAccount's CA first, then the injected bundle" || bad "proxy CA arguments: $(grep -o -- '-openshift-ca=[^ ]*' <<<"$nc" | tr '\n' ' ')"
+[[ "$(grep -c 'mountPath: /etc/converter/ca/injected' <<<"$nc")" == 1 ]] && ok "the bundle is mounted in one container, the login proxy" || bad "trusted CA mount"
+s="$(render --set converter.enabled=true --set converter.trustedCA.existingConfigMap.enabled=true --set converter.trustedCA.existingConfigMap.name=company-ca --set converter.trustedCA.existingConfigMap.key=ca.pem -s templates/60-converter.yaml | grep -v '^ *#')"
+{ grep -q -- '-openshift-ca=/etc/converter/ca/supplied/ca.pem' <<<"$s" && grep -q 'name: company-ca' <<<"$s" && [[ "$(grep -c 'mountPath: /etc/converter/ca/supplied' <<<"$s")" == 1 ]]; } \
+  && ok "an existing ConfigMap and its key reach the proxy as a third CA file" || bad "supplied CA ConfigMap"
+render --set converter.enabled=true --set converter.trustedCA.existingConfigMap.enabled=true --set converter.trustedCA.existingConfigMap.name= -s templates/60-converter.yaml >/dev/null 2>&1 \
+  && bad "a supplied ConfigMap with no name is refused" || ok "a supplied ConfigMap with no name is refused"
+o="$(render --set converter.enabled=true --set converter.trustedCA.injected.enabled=false -s templates/60-converter.yaml | grep -v '^ *#')"
+{ grep -q -- '-openshift-ca' <<<"$o" || grep -q 'trusted-ca' <<<"$o"; } && bad "with both off the proxy keeps its own default trust" || ok "with both off the proxy keeps its own default trust"
+render --set converter.enabled=true --set converter.trustedCA.inject=true >/dev/null 2>&1 && bad "the schema refuses an unknown trustedCA key" || ok "the schema refuses an unknown trustedCA key"
 grep -q 'grafana: text,' charts/openshift-coo/files/converter/index.html && ok "the page sends the dashboard as the text it was given, not re-written by the browser" || bad "page re-writes the upload"
 [[ "$(grep -c 'startupProbe:' <<<"$c")" == 2 && "$(grep -c 'livenessProbe:' <<<"$c")" == 2 ]] && ! grep -q 'readinessProbe:' <<<"$c" \
   && ok "converter: a start-up check and a liveness check per served container, no periodic readiness check" || bad "converter probes"

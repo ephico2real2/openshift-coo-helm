@@ -107,6 +107,8 @@ you, afterwards --7 oc apply, or Git--> your application's namespace
 Nothing is stored. NetworkPolicy: in, only the routers, to 8443; out, DNS and TCP 443 and 6443.
 ```
 
+**`500 Internal Error` after the login** on a cluster whose `*.apps` certificate is signed by a company CA: the login proxy must trust that CA. By default the chart creates an empty ConfigMap that OpenShift fills with the cluster's trusted CA bundle (`converter.trustedCA.injected.enabled`); for a CA the cluster has not been told about, name a ConfigMap of your own (`converter.trustedCA.existingConfigMap`). Both are described in [docs/converter.md](../../docs/converter.md#how-it-works).
+
 How to use it, how it works and what was measured: [docs/converter.md](../../docs/converter.md).
 
 ## Upgrade COO
