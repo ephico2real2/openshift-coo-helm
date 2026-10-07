@@ -12,9 +12,9 @@ One pod, three containers, none built here:
 - oauth-proxy: the only port that leaves the pod. The OpenShift login guards the page; any user who can log in
   may use it. Its certificate comes from the service CA, which the reencrypt Route trusts.
 
-Nothing is stored: no volume but memory, a read-only root filesystem, and a session key minted in memory at
+Nothing is stored: no persistent volume, uploads in memory only, a read-only root filesystem, and a session key minted in memory at
 start (a restart signs everyone out, and the next request logs them in again).
-The ServiceAccount is the OAuth client; its token is mounted in the oauth-proxy container only.
+The ServiceAccount is the OAuth client and is bound to no Role; its token comes from the default mount.
 */ -}}
 {{- if .Values.converter.enabled }}
 {{- $ns := .Values.converter.namespace | default .Release.Namespace }}
@@ -31,7 +31,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
     # The OAuth server accepts a redirect back to this Route's host.
     serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ $name }}"}}'
-automountServiceAccountToken: false
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -72,8 +71,12 @@ spec:
         # A change to the page or the handler restarts the pod.
         checksum/files: {{ printf "%s%s" (.Files.Get "files/converter/server.py") (.Files.Get "files/converter/index.html") | sha256sum }}
     spec:
+      # The default ServiceAccount token mount, as on any pod: oauth-proxy reads the token once, at start, and
+      # presents it as the OAuth client secret at every login, so it must outlive the pod's working life. The
+      # default mount's token is valid for a year. A projected token of the pod's own is valid one hour, whether
+      # expirationSeconds says 3600 or is left out (measured: docs/evidence/crc/17-converter-login-token.txt);
+      # charts 0.4.0 and 0.5.0 mounted one. The ServiceAccount is bound to no Role.
       serviceAccountName: {{ $name }}
-      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -195,10 +198,6 @@ spec:
             - name: session
               mountPath: /session
               readOnly: true
-            # The ServiceAccount's token, for this container only: it is the OAuth client's secret.
-            - name: sa-token
-              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-              readOnly: true
       volumes:
         - name: app
           configMap:
@@ -217,22 +216,6 @@ spec:
         - name: proxy-tls
           secret:
             secretName: {{ $name }}-tls
-        - name: sa-token
-          projected:
-            sources:
-              - serviceAccountToken:
-                  path: token
-                  expirationSeconds: 3600
-              - configMap:
-                  name: kube-root-ca.crt
-                  items:
-                    - key: ca.crt
-                      path: ca.crt
-              - downwardAPI:
-                  items:
-                    - path: namespace
-                      fieldRef:
-                        fieldPath: metadata.namespace
 ---
 apiVersion: v1
 kind: Service

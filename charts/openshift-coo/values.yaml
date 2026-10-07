@@ -122,8 +122,10 @@ converter:
   networkPolicy:
     enabled: true
   images:
-    # The official Perses image: its server is the conversion engine. The tag is v<persesVersion>.
-    perses: docker.io/persesdev/perses
+    # The official Perses image, docker.io/persesdev/perses, copied to quay.io with both architectures and the
+    # same digests (docs/evidence/crc/17-converter-login-token.txt). Its server is the conversion engine. The
+    # tag is v<persesVersion>; to follow a new Perses version, copy that tag first, or name the upstream image.
+    perses: quay.io/ephico2real/persesdev/perses
     # Runs the page (files/converter/server.py, standard library only) and mints the session key.
     python: registry.access.redhat.com/ubi9/python-312:latest
     oauthProxy: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.15
