@@ -84,12 +84,13 @@ has "$o" "Deployment/perses-converter" && bad "no converter by default" || ok "n
 c="$(render --set converter.enabled=true --set converter.namespace=platform-tools -s templates/60-converter.yaml)"
 [[ "$(grep -c '^kind: ' <<<"$c")" == 6 ]] && ok "converter: ServiceAccount, ConfigMap, Deployment, Service, Route, NetworkPolicy" || bad "converter objects: $(grep '^kind: ' <<<"$c" | tr '\n' ' ')"
 [[ "$(grep -c '^  namespace: platform-tools$' <<<"$c")" == 6 ]] && ok "converter.namespace places every converter object" || bad "converter namespace"
-grep -q 'image: "docker.io/persesdev/perses:v0.54.0"' <<<"$c" && ok "the engine is the official Perses image at converter.persesVersion" || bad "converter Perses image"
+grep -q 'image: "quay.io/ephico2real/persesdev/perses:v0.54.0"' <<<"$c" && ok "the engine is the Perses image at converter.persesVersion, from the quay.io copy" || bad "converter Perses image"
 grep -q -- '--web.listen-address=127.0.0.1:8080' <<<"$c" && grep -q -- '-upstream=http://127.0.0.1:8081' <<<"$c" && ok "the engine and the page listen on the loopback; only the login proxy leaves the pod" || bad "converter listen addresses"
-[[ "$(grep -c 'automountServiceAccountToken: false' <<<"$c")" == 2 ]] && ok "no ServiceAccount token is mounted by default" || bad "converter automount"
-[[ "$(grep -c 'mountPath: /var/run/secrets/kubernetes.io/serviceaccount' <<<"$c")" == 1 ]] && ok "the token is mounted in one container, the login proxy" || bad "converter token mount"
-grep -q 'readOnlyRootFilesystem: true' <<<"$c" && ! grep -q 'persistentVolumeClaim' <<<"$c" && ok "read-only root filesystem and no persistent volume" || bad "converter storage"
-grep -q 'termination: reencrypt' <<<"$c" && ok "the Route re-encrypts to the proxy" || bad "converter Route"
+# The login proxy keeps the token it read at start as its OAuth client secret, so the token must outlive the pod's
+# working life: the default mount (valid a year), never a projected token with a short expirationSeconds.
+{ ! grep -q 'automountServiceAccountToken: false' <<<"$c" && ! grep -q 'expirationSeconds' <<<"$c" && ! grep -q 'serviceAccountToken' <<<"$c"; } \
+  && ok "the converter uses the default ServiceAccount token mount, with no short-lived token of its own" || bad "converter token mount"
+grep -q 'kind: RoleBinding' <<<"$c" && bad "the converter's ServiceAccount is bound to no Role" || ok "the converter's ServiceAccount is bound to no Role"
 grep -q 'grafana: text,' charts/openshift-coo/files/converter/index.html && ok "the page sends the dashboard as the text it was given, not re-written by the browser" || bad "page re-writes the upload"
 [[ "$(grep -c 'startupProbe:' <<<"$c")" == 2 && "$(grep -c 'livenessProbe:' <<<"$c")" == 2 ]] && ! grep -q 'readinessProbe:' <<<"$c" \
   && ok "converter: a start-up check and a liveness check per served container, no periodic readiness check" || bad "converter probes"

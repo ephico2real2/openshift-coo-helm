@@ -79,6 +79,34 @@ converter:
   namespace: platform-tools
 ```
 
+**Its address** is the host of the Route `perses-converter`: `https://perses-converter-<namespace>.<apps domain>`, unless `converter.route.host` names another. With no `converter.namespace`, the namespace is the release's.
+
+```bash
+oc get route perses-converter -n <namespace> -o jsonpath='https://{.spec.host}{"\n"}'
+```
+
+<!-- markdownlint-disable MD033 -->
+<img alt="The converter page is reached at one address, the host of the Route perses-converter: https://perses-converter-&lt;namespace&gt;.&lt;apps domain&gt;. Three lanes: you, outside; OpenShift, the platform; and the converter's namespace. 1: your browser opens the address over HTTPS, to the router. 2: the Route re-encrypts to the oauth-proxy container on port 8443, the only port out of the pod. 3: with no session, the proxy sends the browser to the OpenShift login. 4: after the login, the proxy passes the request to the web container on 127.0.0.1:8081, which runs server.py and index.html from a ConfigMap. 5: the web container posts the dashboard to the perses container on 127.0.0.1:8080, the official Perses image run as a server. 6: the answer returns the same way and you download it as a file. 7: you apply the file to your own namespace; the page has no access to it. Nothing is stored. A NetworkPolicy lets in only the routers, to port 8443, and lets out DNS and TCP 443 and 6443." src="../../docs/diagrams/converter/converter-architecture.light.png">
+<!-- markdownlint-enable MD033 -->
+
+*What runs behind the address. One Route, one pod, three containers, and no image built here: the OpenShift login guards the page, the conversion happens on the pod's loopback, and applying the result to a namespace is done by you. The page with this figure, and its dark rendering: [`docs/diagrams/converter/`](../../docs/diagrams/converter/).*
+
+```text
+The address: https://perses-converter-<namespace>.<apps domain>      (the Route's host; converter.route.host to choose it)
+
+YOU, outside                 OPENSHIFT, the platform            NAMESPACE, converter.namespace
+your browser  --1 https-->   Router, Route perses-converter     pod perses-converter (one pod, three containers)
+                             (TLS ends and starts again) --2--> oauth-proxy :8443   the only port out of the pod
+                             OpenShift login  <--3-- no session yet        |4 http, loopback, after the login
+                             (any user who can log in)          web 127.0.0.1:8081  server.py + index.html, from a ConfigMap
+      |6 the file                                                           |5 POST /api/migrate
+      v                                                         perses 127.0.0.1:8080  the official Perses image
+you, afterwards --7 oc apply, or Git--> your application's namespace
+                                        (the page has no access to it)
+
+Nothing is stored. NetworkPolicy: in, only the routers, to 8443; out, DNS and TCP 443 and 6443.
+```
+
 How to use it, how it works and what was measured: [docs/converter.md](../../docs/converter.md).
 
 ## Upgrade COO

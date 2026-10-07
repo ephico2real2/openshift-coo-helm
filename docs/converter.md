@@ -77,11 +77,33 @@ Viewers of a dashboard need `view` in its namespace and `cluster-monitoring-view
 
 ## How it works
 
+<!-- markdownlint-disable MD033 -->
+<img alt="The converter page is reached at one address, the host of the Route perses-converter: https://perses-converter-&lt;namespace&gt;.&lt;apps domain&gt;. Three lanes: you, outside; OpenShift, the platform; and the converter's namespace. 1: your browser opens the address over HTTPS, to the router. 2: the Route re-encrypts to the oauth-proxy container on port 8443, the only port out of the pod. 3: with no session, the proxy sends the browser to the OpenShift login. 4: after the login, the proxy passes the request to the web container on 127.0.0.1:8081, which runs server.py and index.html from a ConfigMap. 5: the web container posts the dashboard to the perses container on 127.0.0.1:8080, the official Perses image run as a server. 6: the answer returns the same way and you download it as a file. 7: you apply the file to your own namespace; the page has no access to it. Nothing is stored. A NetworkPolicy lets in only the routers, to port 8443, and lets out DNS and TCP 443 and 6443." src="diagrams/converter/converter-architecture.light.png">
+<!-- markdownlint-enable MD033 -->
+
+*From the address to the engine, in the order things happen. The steps are numbered in the figure and described under it.*
+
+```text
+The address: https://perses-converter-<namespace>.<apps domain>      (the Route's host; converter.route.host to choose it)
+
+YOU, outside                 OPENSHIFT, the platform            NAMESPACE, converter.namespace
+your browser  --1 https-->   Router, Route perses-converter     pod perses-converter (one pod, three containers)
+                             (TLS ends and starts again) --2--> oauth-proxy :8443   the only port out of the pod
+                             OpenShift login  <--3-- no session yet        |4 http, loopback, after the login
+                             (any user who can log in)          web 127.0.0.1:8081  server.py + index.html, from a ConfigMap
+      |6 the file                                                           |5 POST /api/migrate
+      v                                                         perses 127.0.0.1:8080  the official Perses image
+you, afterwards --7 oc apply, or Git--> your application's namespace
+                                        (the page has no access to it)
+
+Nothing is stored. NetworkPolicy: in, only the routers, to 8443; out, DNS and TCP 443 and 6443.
+```
+
 One pod with three containers. None of the images is built here.
 
 | Container | Image | Role |
 | --- | --- | --- |
-| `perses` | The official Perses image, `docker.io/persesdev/perses:v0.54.0` | The engine: its `/api/migrate` converts. Listens on the pod's loopback only |
+| `perses` | The official Perses image, pulled from its copy `quay.io/ephico2real/persesdev/perses:v0.54.0` (the same digests as `docker.io/persesdev/perses:v0.54.0`) | The engine: its `/api/migrate` converts. Listens on the pod's loopback only |
 | `web` | `ubi9/python-312` | The page, the report and the custom resource: `server.py` and `index.html`, mounted from a ConfigMap. Loopback only |
 | `oauth-proxy` | `ose-oauth-proxy` | The OpenShift login, and the only port that leaves the pod. The Route re-encrypts to it |
 
@@ -93,7 +115,9 @@ One pod with three containers. None of the images is built here.
 - the report;
 - with a named datasource: the name in every variable too (the engine leaves variables without one), and the unused Grafana input variable dropped. The report lists both under "Adjusted".
 
-**What is not kept:** anything. The upload is parsed, converted and returned. The pod has a read-only root filesystem and no volume but memory, the request log has no bodies, and the login's session key is minted in memory at start (a restart signs everyone out; the next request logs them in again).
+**What is not kept:** anything. The upload is parsed, converted and returned. The pod has a read-only root filesystem and no persistent volume; the upload is held in memory only (the one volume on the node's disk holds the engine's unpacked plugins), the request log has no bodies, and the login's session key is minted in memory at start (a restart signs everyone out; the next request logs them in again).
+
+**The login's token.** The proxy's OAuth client is the pod's ServiceAccount, and its client secret is that ServiceAccount's token, which the proxy reads once, when it starts. The pod uses the default token mount, like any pod: the kubelet renews the file by itself, and the token the proxy read at start stays valid for a year. Chart 0.4.0 and 0.5.0 instead mounted a token of their own that was asked to expire after an hour, so an hour after the pod started every new login ended in `500 Internal Error` until the pod was restarted. If you see that on those versions, `oc rollout restart deployment/perses-converter -n <namespace>` gives another hour; chart 0.5.1 removes the cause. The ServiceAccount is bound to no Role, so its token opens nothing in the cluster.
 
 **Health checks:** at start, a check every 5 seconds decides when the pod is Ready, and stops at its first success. After that the page and the login proxy are each checked every 30 minutes (`converter.livenessPeriodSeconds`; 900 is 15 minutes), and one failed check restarts that container. There is no other periodic check: the page converts on request, and every probe is a request it would have to serve and log. What this leaves out:
 
@@ -141,7 +165,7 @@ On CRC 4.22.7 on 2026-10-06 ([evidence 15](evidence/crc/15-converter.txt)), in `
 | The pod under the restricted profile, read-only root, a random user | 3 of 3 containers Ready |
 | The Route without a login | `302` to the OpenShift login; the OAuth server accepts the client and its redirect |
 | `POST /api/convert` through the Route without a login | `302`, not converted |
-| The ServiceAccount token | Mounted in `oauth-proxy` only |
+| The ServiceAccount token | The default mount, valid 365 days; a token asked for 3600 s is valid one hour ([evidence 17](evidence/crc/17-converter-login-token.txt)). The ServiceAccount is bound to no Role |
 | Out of the pod | `kubernetes.default.svc:443` connects; Thanos `:9091`, COO's Perses `:8080` and an outside address on `:80` time out |
 | Into the pod from another namespace's pod | Times out |
 | *IPsec to the NAS* converted in the pod | 23 of 23 panels; `spec.config` identical to `percli migrate --use-default-datasource` |
@@ -172,3 +196,11 @@ python3 tests/capture-converter-page.py https://perses-converter-platform-tools.
 ## Change the page
 
 Edit `charts/openshift-coo/files/converter/server.py` or `index.html`, run both test scripts, and commit. `server.py` uses the Python standard library only, so it needs no image of its own.
+
+## Diagram sources
+
+The figure is hand-authored SVG in [`diagrams/converter/source.html`](diagrams/converter/source.html), rendered to the two PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which writes them only when its checks pass. This document and the chart README embed the light one. The picture, its text twin and the page change together:
+
+```bash
+~/.local/share/diagram-kit/.venv/bin/diagram-render docs/diagrams/converter/source.html docs/diagrams/converter converter-architecture
+```

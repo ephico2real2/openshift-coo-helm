@@ -1,0 +1,185 @@
+<!-- SPDX-License-Identifier: MIT-0. Started from the diagram-kit template, https://github.com/ephico2real2/diagram-kit -->
+<title>Converter Page Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-coo-helm · the converter page · 2026-10-07</div>
+    <h1>What runs behind the Grafana-to-Perses converter's address</h1>
+    <p class="lede">The converter is an optional part of the <code>openshift-coo</code> chart (<code>converter.enabled</code>). It is one pod behind one Route. This page shows the path a request takes from a browser to the conversion engine, where the OpenShift login sits on that path, and what leaves the pod.</p>
+    <p class="muted">Every label is read from <code>charts/openshift-coo/templates/60-converter.yaml</code> and from the objects on the lab (CRC 4.22.7, namespace <code>platform-tools</code>), measured in <code>docs/evidence/crc/15-converter.txt</code>.</p>
+  </header>
+
+  <section>
+    <h2>From the address to the engine</h2>
+    <figure>
+      <div class="fig-scroll">
+        <!-- Three lanes, each a trust boundary: you, the platform, the converter's namespace. Solid arrows are requests,
+             numbered in the order they happen; amber arrows are the two steps you take yourself. No box is proposed:
+             everything drawn is what chart 0.5.0 deploys. -->
+        <svg viewBox="0 0 1100 842" role="img" aria-label="The converter page is reached at one address, the Route perses-converter. The router re-encrypts to the oauth-proxy container, the only port out of one pod; an anonymous browser is sent to the OpenShift login first. Behind the proxy, on the pod's loopback, the web container serves the page and posts the dashboard to the Perses engine container. The result comes back as a file, which you apply to your own namespace yourself. Nothing is stored.">
+          <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+          <g font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600">
+            <rect x="20" y="14" width="220" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+            <text x="130" y="34" text-anchor="middle" fill="var(--host)">YOU  ·  outside</text>
+            <rect x="330" y="14" width="240" height="30" rx="6" fill="var(--none-wash)" stroke="var(--none)"/>
+            <text x="450" y="34" text-anchor="middle" fill="var(--none)">OPENSHIFT  ·  platform</text>
+            <rect x="660" y="14" width="420" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+            <text x="870" y="34" text-anchor="middle" fill="var(--remote)">NAMESPACE  ·  converter.namespace</text>
+          </g>
+          <line x1="285" y1="124" x2="285" y2="640" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="615" y1="124" x2="615" y2="640" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <rect x="20" y="58" width="1060" height="52" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="36" y="80" font-weight="600">The address</text>
+            <text x="124" y="80" font-family="IBM Plex Mono, monospace" font-size="12">https://perses-converter-&lt;namespace&gt;.&lt;apps domain&gt;</text>
+            <text x="36" y="98" fill="var(--muted)">The Route's host. On the lab: https://perses-converter-platform-tools.apps-crc.testing. Set converter.route.host to choose another.</text>
+
+            <rect x="20" y="130" width="220" height="70" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+            <text x="36" y="153" font-weight="600" fill="var(--host)">Your browser</text>
+            <text x="36" y="170">upload a Grafana JSON</text>
+            <text x="36" y="187" fill="var(--muted)">download the Perses resource</text>
+            <rect x="330" y="130" width="240" height="70" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="346" y="153" font-weight="600" fill="currentColor">Router</text>
+            <text x="346" y="170">Route perses-converter</text>
+            <text x="346" y="187" fill="var(--muted)">TLS ends here and starts again</text>
+            <rect x="330" y="290" width="240" height="70" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="346" y="313" font-weight="600" fill="currentColor">OpenShift login</text>
+            <text x="346" y="330">OAuth server oauth-openshift</text>
+            <text x="346" y="347" fill="var(--muted)">any user who can log in</text>
+
+            <rect x="660" y="118" width="420" height="434" rx="10" fill="none" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="676" y="140" font-weight="600" fill="var(--remote)">Pod perses-converter  ·  one pod, three containers</text>
+            <rect x="676" y="152" width="388" height="70" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="692" y="175" font-weight="600" fill="var(--remote)">oauth-proxy  :8443</text>
+            <text x="692" y="192">the only port out of the pod; TLS from the service CA</text>
+            <text x="692" y="209" fill="var(--muted)">the ServiceAccount is its OAuth client; it has no Role</text>
+            <rect x="676" y="272" width="388" height="70" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="692" y="295" font-weight="600" fill="var(--remote)">web  127.0.0.1:8081</text>
+            <text x="692" y="312">server.py and index.html, mounted from a ConfigMap</text>
+            <text x="692" y="329" fill="var(--muted)">the page, the report, the PersesDashboard resource</text>
+            <rect x="676" y="392" width="388" height="70" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="692" y="415" font-weight="600" fill="var(--remote)">perses  127.0.0.1:8080</text>
+            <text x="692" y="432">the official Perses image, run as a server</text>
+            <text x="692" y="449" fill="var(--muted)">POST /api/migrate: the same result as percli migrate</text>
+            <text x="676" y="488" fill="var(--muted)">Nothing is stored: read-only root, uploads in memory only.</text>
+            <text x="676" y="506" fill="var(--muted)">The session key is minted at start: a restart signs you out.</text>
+            <text x="676" y="524" fill="var(--muted)">Health: a start-up check, then liveness every 30 minutes.</text>
+
+            <rect x="660" y="566" width="420" height="70" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+            <text x="676" y="589" font-weight="600" fill="var(--none)">NetworkPolicy perses-converter</text>
+            <text x="676" y="606">in: only the routers, to port 8443</text>
+            <text x="676" y="623" fill="var(--muted)">out: DNS, and TCP 443 and 6443, which the login needs</text>
+
+            <rect x="20" y="470" width="220" height="70" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+            <text x="36" y="493" font-weight="600" fill="var(--host)">You, afterwards</text>
+            <text x="36" y="510">oc apply -f, or commit to Git</text>
+            <text x="36" y="527" fill="var(--muted)">the file you downloaded</text>
+            <rect x="330" y="470" width="240" height="70" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="346" y="493" font-weight="600" fill="currentColor">Your application's namespace</text>
+            <text x="346" y="510">PersesDashboard, PersesDatasource</text>
+            <text x="346" y="527" fill="var(--muted)">Observe → Dashboards (Perses)</text>
+
+            <line x1="240" y1="165" x2="326" y2="165" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="262" y="157" text-anchor="middle" font-size="15" font-weight="600">①</text>
+            <line x1="570" y1="165" x2="672" y2="165" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="592" y="157" text-anchor="middle" font-size="15" font-weight="600">②</text>
+            <line x1="676" y1="212" x2="574" y2="306" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="640" y="268" text-anchor="middle" font-size="15" font-weight="600">③</text>
+            <line x1="870" y1="222" x2="870" y2="268" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="888" y="251" text-anchor="middle" font-size="15" font-weight="600">④</text>
+            <line x1="870" y1="342" x2="870" y2="388" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="888" y="371" text-anchor="middle" font-size="15" font-weight="600">⑤</text>
+            <line x1="130" y1="200" x2="130" y2="466" stroke="var(--host)" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="148" y="340" text-anchor="middle" font-size="15" font-weight="600">⑥</text>
+            <line x1="240" y1="505" x2="326" y2="505" stroke="var(--host)" stroke-width="1.2" marker-end="url(#ah)"/>
+            <text x="262" y="497" text-anchor="middle" font-size="15" font-weight="600">⑦</text>
+
+            <text x="20" y="674" font-weight="600">①</text><text x="42" y="674">You open the address: HTTPS to the router. Plain http is redirected to https.</text>
+            <text x="20" y="693" font-weight="600">②</text><text x="42" y="693">The Route re-encrypts to the proxy on port 8443. Nothing else in the pod listens outside its loopback.</text>
+            <text x="20" y="712" font-weight="600">③</text><text x="42" y="712">No session yet: the proxy sends the browser to the OpenShift login, and checks the answer with it. Without a login, the page and its API answer 302.</text>
+            <text x="20" y="731" font-weight="600">④</text><text x="42" y="731">After the login, the proxy passes the request to the page, over plain http on the pod's loopback.</text>
+            <text x="20" y="750" font-weight="600">⑤</text><text x="42" y="750">The page posts the dashboard to the engine, then adds the report and wraps the result as a perses.dev/v1alpha2 resource.</text>
+            <text x="20" y="769" font-weight="600">⑥</text><text x="42" y="769">The answer returns the same way. You download it as a file.</text>
+            <text x="20" y="788" font-weight="600">⑦</text><text x="42" y="788">You apply the file to your own namespace. The page has no access to it: this step is yours.</text>
+            <text x="20" y="822" fill="var(--muted)">One address, one pod, three containers, no image built here. The login guards the page; the conversion itself needs no connection out of the pod.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>The converter is reached at the Route's address and nowhere else. The router re-encrypts to <code>oauth-proxy</code>, the only container with a port outside the pod's loopback, which sends an anonymous browser to the OpenShift login. Behind it the <code>web</code> container serves the page and posts the dashboard to the <code>perses</code> container, the official image run as a server. The result is a file: applying it to a namespace is done by you, not by the page.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>The parts</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Object</th><th>What it is</th><th>Measured on the lab</th></tr></thead>
+        <tbody>
+          <tr><td>Route <code>perses-converter</code></td><td>The address. <code>reencrypt</code>, with http redirected to https</td><td>Host <code>perses-converter-platform-tools.apps-crc.testing</code>, admitted</td></tr>
+          <tr><td>Service <code>perses-converter</code></td><td>Port 8443 to the proxy; its certificate comes from the service CA</td><td>One port, <code>https</code> 8443</td></tr>
+          <tr><td>Container <code>oauth-proxy</code></td><td>The OpenShift login. The ServiceAccount is its OAuth client</td><td>Without a login: <code>302</code> for the page and for the API</td></tr>
+          <tr><td>Container <code>web</code></td><td><code>server.py</code> and <code>index.html</code> from the ConfigMap, on <code>127.0.0.1:8081</code></td><td>23 of 23 panels of the sample converted; the download identical to <code>percli</code></td></tr>
+          <tr><td>Container <code>perses</code></td><td>The official Perses 0.54.0 image as a server, on <code>127.0.0.1:8080</code></td><td><code>/api/migrate</code> gives the same dashboard as <code>percli migrate</code> offline</td></tr>
+          <tr><td>NetworkPolicy <code>perses-converter</code></td><td>In: the routers, to 8443. Out: DNS, and TCP 443 and 6443</td><td>From another namespace's pod: times out. Out to Thanos, to COO's Perses, to an outside address on port 80: time out</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>

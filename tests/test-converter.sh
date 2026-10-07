@@ -3,10 +3,10 @@
 # needed:  tests/test-converter.sh
 # It starts the official Perses image as the engine, runs server.py against it, and converts tests/fixtures/
 # ipsec-nas.json. Needs podman or docker, python3 and curl; skips when there is no container engine.
-#   PERSES_IMAGE=docker.io/persesdev/perses:v0.54.0
+#   PERSES_IMAGE=quay.io/ephico2real/persesdev/perses:v0.54.0   (the chart's image: a copy of docker.io/persesdev/perses)
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-IMAGE="${PERSES_IMAGE:-docker.io/persesdev/perses:v0.54.0}"
+IMAGE="${PERSES_IMAGE:-quay.io/ephico2real/persesdev/perses:v0.54.0}"
 ENGINE="$(command -v podman || command -v docker)" || { echo "skip  no podman or docker"; exit 0; }
 FIXTURE=tests/fixtures/ipsec-nas.json
 tmp="$(mktemp -d)"; chmod a+rx "${tmp}"; cp "${FIXTURE}" "${tmp}/dashboard.json"; chmod a+r "${tmp}/dashboard.json"

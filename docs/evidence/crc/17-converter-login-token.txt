@@ -1,0 +1,45 @@
+# The converter's login token, and its image, measured on CRC 4.22.7 on 2026-10-07.
+# Reported from a remote cluster: the converter's Route answered "500 Internal Error". Chart 0.4.0 and 0.5.0 gave
+# the login proxy a ServiceAccount token from a projected volume of their own, asked to expire after 3600 s.
+# Chart 0.5.1 removes that volume: the pod uses the default token mount, like any pod.
+
+### 1. How long a ServiceAccount token is valid, by how the pod asks for it
+# A throw-away pod with three tokens mounted; it printed only expiry minus issue time, never a token.
+projected, no expirationSeconds: 3600 seconds
+projected, expirationSeconds 3600: 3600 seconds
+projected, expirationSeconds 3607: 31536000 seconds
+the default mount: 31536000 seconds
+# What the API server stored for the volume written with no expirationSeconds: {"expirationSeconds":3600,"path":"token"}
+# So leaving the field out is the same one hour: the API server fills in 3600. Only the default mount (which asks
+# for 3607 s, the lifetime the API server extends) gives a token that is valid for 365 days.
+
+### 2. What the proxy does with the token (openshift/oauth-proxy, providers/openshift/provider.go and options.go, read)
+# LoadDefaults, provider.go lines 131-133: reads /var/run/secrets/kubernetes.io/serviceaccount/token once, at start,
+#   into ClientSecret ("Defaulting client-secret to service account token ...").
+# Redeem, provider.go line 545: sends that ClientSecret with every login's code exchange.
+# Nothing re-reads the file. The kubelet renews the file; the proxy keeps the value it read when it started.
+# So with a one-hour token, a pod older than an hour cannot complete a new login.
+
+### 3. Is it the namespace? A fresh copy of the converter in COO's own namespace
+# The chart's converter objects applied by hand to openshift-cluster-observability-operator (release name convtest),
+# then tests/capture-converter-page.py against its Route, 16 s after the pod started:
+after opening the address, the browser is at: https://oauth-openshift.apps-crc.testing/oauth/authorize
+after the login, the browser is at: https://perses-converter-openshift-cluster-observability-operator.apps-crc.testing/
+[light] POST api/convert -> 200 | 23 of 23 panels converted (1 BarChart, 16 StatChart, 3 Table, 3 TimeSeriesChart), in 6 sections.
+proxy log: authentication complete Session{developer@cluster.local token:true}
+# And again when that pod was 434 s old: callback 302, page 200, "authentication complete".
+# So on the lab the namespace is not what breaks the login. The copy was removed afterwards.
+
+### 4. What was not measured
+# The 500 itself was not reproduced on the lab: a login on a pod older than its token's lifetime was not run.
+# The cause above rests on sections 1 and 2, and on the lab's own tests having always been on pods a few minutes old.
+
+### 5. The Perses image: docker.io/persesdev/perses copied to quay.io/ephico2real/persesdev/perses
+# podman manifest create / add --all / push --all, so that both architectures are copied. Digests read back:
+quay.io/ephico2real/persesdev/perses:0.54: amd64=6def46a662a2 arm64=3d73e476d621
+quay.io/ephico2real/persesdev/perses:0.54.0: amd64=6def46a662a2 arm64=3d73e476d621
+quay.io/ephico2real/persesdev/perses:v0.54.0: amd64=6def46a662a2 arm64=3d73e476d621
+docker.io/persesdev/perses:v0.54.0: amd64=6def46a662a2 arm64=3d73e476d621
+# Pulled without a login: http 200 for the three tags; the repository is public.
+# The chart asks for <converter.images.perses>:v<converter.persesVersion>, so v0.54.0 is the tag it pulls.
+# tests/test-converter.sh, with the quay.io copy as the engine: 17 of 17 checks pass.
