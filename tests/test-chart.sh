@@ -88,7 +88,8 @@ grep -q 'image: "quay.io/ephico2real/persesdev/perses:v0.54.0"' <<<"$c" && ok "t
 grep -q -- '--web.listen-address=127.0.0.1:8080' <<<"$c" && grep -q -- '-upstream=http://127.0.0.1:8081' <<<"$c" && ok "the engine and the page listen on the loopback; only the login proxy leaves the pod" || bad "converter listen addresses"
 # The login proxy keeps the token it read at start as its OAuth client secret, so the token must outlive the pod's
 # working life: the default mount (valid a year), never a projected token with a short expirationSeconds.
-{ ! grep -q 'automountServiceAccountToken: false' <<<"$c" && ! grep -q 'expirationSeconds' <<<"$c" && ! grep -q 'serviceAccountToken' <<<"$c"; } \
+nc="$(grep -v '^ *#' <<<"$c")"   # the template's comments name the field; the manifest must not set it
+{ ! grep -q 'automountServiceAccountToken: false' <<<"$nc" && ! grep -q 'expirationSeconds' <<<"$nc" && ! grep -q 'serviceAccountToken' <<<"$nc"; } \
   && ok "the converter uses the default ServiceAccount token mount, with no short-lived token of its own" || bad "converter token mount"
 grep -q 'kind: RoleBinding' <<<"$c" && bad "the converter's ServiceAccount is bound to no Role" || ok "the converter's ServiceAccount is bound to no Role"
 grep -q 'grafana: text,' charts/openshift-coo/files/converter/index.html && ok "the page sends the dashboard as the text it was given, not re-written by the browser" || bad "page re-writes the upload"
