@@ -1,0 +1,72 @@
+# The OperatorGroup, measured on CRC 4.22.7 (COO 1.5.3 installed by Argo CD in its own namespace) on 2026-10-07.
+# Reported from a remote cluster: with namespace.create=false the chart rendered a Subscription and no OperatorGroup,
+# and the install did nothing. Chart 0.5.0 renders the OperatorGroup whatever namespace.create says
+# (operatorGroup.create, default true) and makes the approver Job check for exactly one before it waits.
+# Everything below ran in scratch namespaces that were deleted afterwards. No Subscription was approved.
+
+### 1. What OLM does with a Subscription in a namespace that has no OperatorGroup
+# namespace coo-og-check: a Subscription for cluster-observability-operator (channel stable, Manual approval,
+# startingCSV cluster-observability-operator.v1.5.3), and nothing else.
+--- after 15s: OperatorGroups 0, InstallPlans 0, CSVs created here 0
+{"state":null,"installPlanRef":null,"conditions":[{"type":"CatalogSourcesUnhealthy","status":"False","reason":"AllCatalogSourcesHealthy","message":"all available catalogsources are healthy"}]}
+--- after 45s: OperatorGroups 0, InstallPlans 0, CSVs created here 0
+{"state":null,"installPlanRef":null,"conditions":[{"type":"CatalogSourcesUnhealthy","status":"False","reason":"AllCatalogSourcesHealthy","message":"all available catalogsources are healthy"}]}
+--- after 90s: OperatorGroups 0, InstallPlans 0, CSVs created here 0
+{"state":null,"installPlanRef":null,"conditions":[{"type":"CatalogSourcesUnhealthy","status":"False","reason":"AllCatalogSourcesHealthy","message":"all available catalogsources are healthy"}]}
+# oc get events -n coo-og-check: none.
+# So nothing names the cause, and the approver of chart 0.4.0 waits installPlanApprover.waitSeconds (300 s) before
+# it fails with "no InstallPlan".
+
+### 2. What the chart renders (helm template, kube-version 1.35.0, release in platform-tools)
+default:                              1 Namespace, 1 OperatorGroup, 1 Subscription
+namespace.create=false, chart 0.4.0:  1 Subscription
+namespace.create=false, chart 0.5.0:  1 OperatorGroup, 1 Subscription
+operatorGroup.create=false:           1 Namespace, 1 Subscription
+
+### 3. The approver's check, chart 0.5.0
+# namespace coo-og-guard2. The approver's ServiceAccount, Role, RoleBinding and Job as the chart renders them with
+#   --set namespace.name=coo-og-guard2 --set namespace.create=false --set operatorGroup.create=false
+#   --set installPlanApprover.waitSeconds=30
+# and no Subscription, so that nothing can be approved. The OperatorGroups of each case were made by hand.
+# (The first log line of each case is the lab's own pod admission, not the chart.)
+### case: no OperatorGroup
+OperatorGroups in the namespace: 
+  Defaulted container "approve" out of: approve, dynatrace-operator (init)
+  [approver 01:13:00] target cluster-observability-operator.v1.5.3 in coo-og-guard2
+  [approver] FAILED: no OperatorGroup in coo-og-guard2: OLM installs nothing without one, and reports nothing. Set
+    operatorGroup.create=true (the default) and sync again, or create one with no targetNamespaces.
+  -> Job succeeded/failed: /1; 9 s after it was created
+### case: two OperatorGroups
+OperatorGroups in the namespace: one two 
+  Defaulted container "approve" out of: approve, dynatrace-operator (init)
+  [approver 01:13:08] target cluster-observability-operator.v1.5.3 in coo-og-guard2
+  [approver] FAILED: 2 OperatorGroups in coo-og-guard2; OLM allows one and installs nothing with more:
+      one targetNamespaces=[]
+    two targetNamespaces=[]
+    Keep one with no targetNamespaces. If it is not this chart's, set operatorGroup.create=false.
+  -> Job succeeded/failed: /1; 9 s after it was created
+### case: one OperatorGroup that selects a namespace
+OperatorGroups in the namespace: scoped 
+  Defaulted container "approve" out of: approve, dynatrace-operator (init)
+  [approver 01:13:17] target cluster-observability-operator.v1.5.3 in coo-og-guard2
+  [approver] FAILED: the OperatorGroup in coo-og-guard2 selects namespaces (scoped targetNamespaces=[coo-og-guard2]). cluster-observability-operator supports
+    only AllNamespaces: an OperatorGroup with no targetNamespaces.
+  -> Job succeeded/failed: /1; 9 s after it was created
+### case: one OperatorGroup for all namespaces (there is no Subscription in this namespace, so after the check it waits its 30 s and stops)
+OperatorGroups in the namespace: one 
+  Defaulted container "approve" out of: approve, dynatrace-operator (init)
+  [approver 01:13:26] target cluster-observability-operator.v1.5.3 in coo-og-guard2
+  [approver 01:13:26] OperatorGroup one: one, for all namespaces
+  [approver 01:13:26] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver 01:13:32] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver 01:13:37] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver 01:13:42] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver 01:13:47] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver 01:13:52] waiting for OLM to stage an InstallPlan for cluster-observability-operator.v1.5.3
+  [approver] FAILED: no InstallPlan for cluster-observability-operator.v1.5.3 within 30s. Inspect:
+      oc describe subscriptions.operators.coreos.com cluster-observability-operator -n coo-og-guard2
+    A missing catalog source, or a version the channel does not carry, presents like this. InstallPlans:
+      NAME   PHASE   APPROVED   CSV
+  -> Job succeeded/failed: /1; 38 s after it was created
+# Case 4 passes the check and then waits for an InstallPlan that cannot come: the namespace has no Subscription.
+# The check passing on a real install is section 4.

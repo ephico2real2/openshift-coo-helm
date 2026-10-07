@@ -1,8 +1,10 @@
 {{- /*
-COO supports AllNamespaces only: an OperatorGroup with no targetNamespaces. OLM allows one OperatorGroup per
-namespace, so with namespace.create=false the existing one is used and none is rendered.
+COO supports AllNamespaces only: an OperatorGroup with no targetNamespaces. It is part of installing the operator,
+not of the namespace: it is rendered whether or not the chart creates the namespace (namespace.create). Without one
+OLM stages nothing and reports nothing (measured: docs/evidence/crc/16-operatorgroup.txt). OLM allows one
+OperatorGroup per namespace, so operatorGroup.create=false is for a namespace that already holds its own.
 */ -}}
-{{- if .Values.namespace.create }}
+{{- if .Values.operatorGroup.create }}
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:

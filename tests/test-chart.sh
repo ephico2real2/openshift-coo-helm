@@ -35,9 +35,18 @@ o="$(objects --set 'metricsAccess.groups={system:authenticated,team-a}')"
 has "$o" "ClusterRoleBinding/coo-openshift-coo-cluster-monitoring-view" && ok "metricsAccess.groups binds cluster-monitoring-view" || bad "metrics binding"
 [[ "$(render --set 'metricsAccess.groups={system:authenticated,team-a}' | grep -c 'kind: Group')" == 2 ]] && ok "one subject per group" || bad "one subject per group"
 
+# The OperatorGroup does not depend on who makes the namespace: a namespace made outside the chart still gets one.
 o="$(objects --set namespace.create=false)"
-{ has "$o" "Namespace/openshift-cluster-observability-operator" || has "$o" "OperatorGroup/cluster-observability-operator"; } \
-  && bad "namespace.create=false renders no Namespace and no OperatorGroup" || ok "namespace.create=false renders no Namespace and no OperatorGroup"
+has "$o" "Namespace/openshift-cluster-observability-operator" && bad "namespace.create=false renders no Namespace" || ok "namespace.create=false renders no Namespace"
+{ has "$o" "OperatorGroup/cluster-observability-operator" && has "$o" "Subscription/cluster-observability-operator"; } \
+  && ok "namespace.create=false still renders the OperatorGroup and the Subscription" || bad "namespace.create=false lost the OperatorGroup"
+o="$(objects --set operatorGroup.create=false)"
+{ has "$o" "OperatorGroup/cluster-observability-operator" || ! has "$o" "Namespace/openshift-cluster-observability-operator"; } \
+  && bad "operatorGroup.create=false renders no OperatorGroup, and nothing else changes" || ok "operatorGroup.create=false renders no OperatorGroup, and nothing else changes"
+a="$(render -s templates/04-installplan-approver.yaml)"
+grep -A2 'resources: \["operatorgroups"\]' <<<"$a" | grep -q 'verbs: \["get", "list"\]' && ok "the approver may read OperatorGroups, and only read" || bad "approver OperatorGroup grant"
+{ grep -q 'no OperatorGroup in' <<<"$a" && grep -q 'OLM allows one' <<<"$a" && grep -q 'supports$' <<<"$a"; } \
+  && ok "the approver refuses zero, several, or a namespaced OperatorGroup before it waits" || bad "approver OperatorGroup check"
 o="$(objects --set csvReclaim.enabled=false)"
 has "$o" "Job/coo-openshift-coo-csv-reclaim" && bad "csvReclaim.enabled=false renders no reclaim" || ok "csvReclaim.enabled=false renders no reclaim"
 o="$(objects --set platformScrapeRBAC=false)"

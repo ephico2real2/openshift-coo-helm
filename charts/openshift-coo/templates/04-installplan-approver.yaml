@@ -46,6 +46,10 @@ rules:
   - apiGroups: ["operators.coreos.com"]
     resources: ["clusterserviceversions"]
     verbs: ["get", "list"]
+  # Read only: the check that the namespace holds exactly one OperatorGroup.
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["operatorgroups"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -127,6 +131,25 @@ spec:
               }
 
               log "target ${TARGET} in ${NAMESPACE}"
+
+              # Exactly one OperatorGroup, with no targetNamespaces. Checked before any waiting, because OLM says
+              # nothing when it is wrong: with none, the Subscription gets no state, no InstallPlan and no event.
+              GROUPS_OUT="$(oc get operatorgroups.operators.coreos.com -n "$NAMESPACE" \
+                -o jsonpath='{range .items[*]}{.metadata.name}{" targetNamespaces=["}{.spec.targetNamespaces[*]}{"]"}{"\n"}{end}')" \
+                || fail "could not list OperatorGroups in ${NAMESPACE}"
+              GROUP_COUNT="$(printf '%s' "$GROUPS_OUT" | grep -c . || true)"
+              case "$GROUP_COUNT" in
+                0) fail "no OperatorGroup in ${NAMESPACE}: OLM installs nothing without one, and reports nothing. Set
+                operatorGroup.create=true (the default) and sync again, or create one with no targetNamespaces." ;;
+                1) case "$GROUPS_OUT" in
+                     *"targetNamespaces=[]"*) log "OperatorGroup ${GROUPS_OUT%% *}: one, for all namespaces" ;;
+                     *) fail "the OperatorGroup in ${NAMESPACE} selects namespaces (${GROUPS_OUT}). ${SUBSCRIPTION} supports
+                only AllNamespaces: an OperatorGroup with no targetNamespaces." ;;
+                   esac ;;
+                *) fail "${GROUP_COUNT} OperatorGroups in ${NAMESPACE}; OLM allows one and installs nothing with more:
+                $(printf '%s\n' "$GROUPS_OUT" | sed 's/^/  /')
+                Keep one with no targetNamespaces. If it is not this chart's, set operatorGroup.create=false." ;;
+              esac
 
               # Already installed: nothing to approve. A newer plan OLM has staged is left for a human.
               if [ "$(sub_field .status.installedCSV 2>/dev/null)" = "$TARGET" ]; then
