@@ -46,6 +46,26 @@ data:
 {{ .Files.Get "files/converter/server.py" | trimSuffix "\n" | indent 4 }}
   index.html: |
 {{ .Files.Get "files/converter/index.html" | trimSuffix "\n" | indent 4 }}
+{{- if .Values.converter.trustedCA.injected.enabled }}
+---
+# Deliberately empty. The label makes OpenShift's network operator write data."ca-bundle.crt": the system trust
+# store merged with the CA in proxy/cluster spec.trustedCA. The login proxy needs it on a cluster whose *.apps
+# certificate is signed by a company CA: the ServiceAccount's ca.crt does not cover the OAuth route there, and
+# the login ends in "500 Internal Error" (oauthproxy.go: error redeeming code ... x509: certificate signed by
+# unknown authority). Do not put data here: the operator owns it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-trusted-ca
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openshift-coo.labels" . | nindent 4 }}
+    config.openshift.io/inject-trusted-cabundle: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # The operator writes the data; server-side apply lets it keep what it wrote across syncs.
+    argocd.argoproj.io/sync-options: ServerSideApply=true
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -167,6 +187,18 @@ spec:
             - -cookie-secret-file=/session/session_secret
             - -cookie-expire=4h
             - -openshift-service-account={{ $name }}
+            {{- if or .Values.converter.trustedCA.injected.enabled .Values.converter.trustedCA.existingConfigMap.enabled }}
+            # The CAs the proxy trusts when it calls the API and the OAuth route. Naming any replaces the
+            # proxy's default (the ServiceAccount's ca.crt and the image's system store), so the first line
+            # keeps the ServiceAccount's, which signs the API it asks for the OAuth server's address.
+            - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            {{- if .Values.converter.trustedCA.injected.enabled }}
+            - -openshift-ca=/etc/converter/ca/injected/ca-bundle.crt
+            {{- end }}
+            {{- if .Values.converter.trustedCA.existingConfigMap.enabled }}
+            - -openshift-ca=/etc/converter/ca/supplied/{{ .Values.converter.trustedCA.existingConfigMap.key }}
+            {{- end }}
+            {{- end }}
             - -skip-provider-button
           ports:
             - name: https
@@ -198,6 +230,16 @@ spec:
             - name: session
               mountPath: /session
               readOnly: true
+            {{- if .Values.converter.trustedCA.injected.enabled }}
+            - name: trusted-ca-injected
+              mountPath: /etc/converter/ca/injected
+              readOnly: true
+            {{- end }}
+            {{- if .Values.converter.trustedCA.existingConfigMap.enabled }}
+            - name: trusted-ca-supplied
+              mountPath: /etc/converter/ca/supplied
+              readOnly: true
+            {{- end }}
       volumes:
         - name: app
           configMap:
@@ -216,6 +258,20 @@ spec:
         - name: proxy-tls
           secret:
             secretName: {{ $name }}-tls
+        {{- if .Values.converter.trustedCA.injected.enabled }}
+        - name: trusted-ca-injected
+          configMap:
+            name: {{ $name }}-trusted-ca
+            # Optional: the operator fills it a moment after it is created, and a pod that waited for the key
+            # would stall the first rollout. The proxy re-reads its CA files when they change.
+            optional: true
+        {{- end }}
+        {{- if .Values.converter.trustedCA.existingConfigMap.enabled }}
+        - name: trusted-ca-supplied
+          configMap:
+            # Not optional: you named it, so its absence stops the pod instead of starting without your CA.
+            name: {{ required "converter.trustedCA.existingConfigMap.name is required when existingConfigMap.enabled is true" .Values.converter.trustedCA.existingConfigMap.name }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

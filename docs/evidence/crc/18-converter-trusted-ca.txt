@@ -1,0 +1,42 @@
+# The CAs the converter's login proxy trusts, 2026-10-07.
+# This is what the 500 reported from a remote cluster was. The proxy's log there, with the cluster's name removed:
+#   oauthproxy.go:661: error redeeming code (client:...): Post "https://oauth-openshift.apps.<cluster domain>/oauth/token":
+#       tls: failed to verify certificate: x509: certificate signed by unknown authority
+#   oauthproxy.go:452: ErrorPage 500 Internal Error Internal Error
+#   provider.go:671: 200 GET https://<api service address>/.well-known/oauth-authorization-server
+#       {"issuer": "https://oauth-openshift.apps.<cluster domain>", ...}
+# The discovery call, to the API's in-cluster address, succeeds; the code exchange, to the OAuth route, fails: the
+# route's certificate is signed by a company CA that the ServiceAccount's ca.crt does not hold.
+# Evidence 17 took the cause to be the one-hour token. That defect was real and is fixed in 0.5.1, but it was not
+# this failure: the log above names the certificate.
+
+### 1. What the proxy trusts (openshift/oauth-proxy, providers/openshift/provider.go newOpenShiftClient, and main.go; read)
+# With no -openshift-ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt and the image's system store.
+# With any -openshift-ca: only the files named ("may be given multiple times"), and no system store.
+# The pool is built again when those files change (GetFilesMetadataHash).
+
+### 2. Chart 0.5.2 on the lab (CRC 4.22.7), the default: an empty ConfigMap that OpenShift fills
+# The chart's converter objects applied to platform-tools as Argo CD renders them.
+configmap/perses-converter-trusted-ca created
+deployment "perses-converter" successfully rolled out
+proxy CA arguments: -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt  -openshift-ca=/etc/converter/ca/injected/ca-bundle.crt
+/var/run/secrets/kubernetes.io/serviceaccount/ca.crt: 6 certificates
+/etc/converter/ca/injected/ca-bundle.crt: 152 certificates
+responses: 302 /, 302 /oauth/callback, 200 /
+the browser is at: https://perses-converter-platform-tools.apps-crc.testing/
+proxy log: 0 x509 or redeem errors; 1 logins completed
+
+### 3. With a ConfigMap supplied as well (converter.trustedCA.existingConfigMap)
+# enterprise-ca, key ca-bundle.crt, made in platform-tools from the lab's own public ingress CA
+# (openshift-config-managed/default-ingress-cert), standing in for a company CA.
+proxy CA arguments: -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt  -openshift-ca=/etc/converter/ca/injected/ca-bundle.crt  -openshift-ca=/etc/converter/ca/supplied/ca-bundle.crt
+/etc/converter/ca/supplied/ca-bundle.crt: 2 certificates
+responses: 302 /, 302 /oauth/callback, 200 /
+proxy log: 0 x509 or redeem errors; 1 logins completed
+# The ConfigMap was removed and the default put back afterwards.
+
+### 4. What the lab cannot show
+# The lab's OAuth route is signed by a CA that the ServiceAccount's ca.crt already holds, so the login worked there
+# before this change too: the lab shows that the bundle is injected, mounted and named to the proxy, and that
+# logins still work with it, not the failure and its cure. The same arguments are what the group-sync-dashboard
+# chart passes to its own oauth-proxy for the same error.

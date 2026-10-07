@@ -121,6 +121,22 @@ converter:
   # In: the routers only. Out: DNS and TCP 443 and 6443 (the login). Converting itself needs no connection.
   networkPolicy:
     enabled: true
+  # The CAs the login proxy trusts for the OAuth route. On a cluster whose *.apps certificate is signed by a
+  # company CA, the ServiceAccount's ca.crt does not cover that route, and the login ends in "500 Internal Error"
+  # (proxy log: "error redeeming code ... x509: certificate signed by unknown authority").
+  trustedCA:
+    # An empty ConfigMap, perses-converter-trusted-ca, labelled config.openshift.io/inject-trusted-cabundle:
+    # OpenShift fills it with the system trust store and the CA in proxy/cluster spec.trustedCA. Nothing to
+    # maintain; it carries the CAs the cluster has been told about.
+    injected:
+      enabled: true
+    # A ConfigMap you made, in the converter's namespace, for a CA the cluster has not been told about:
+    #   oc create configmap enterprise-ca --from-file=ca-bundle.crt=/path/to/ca.pem -n <namespace>
+    # Named, not templated: a certificate in values ends up in Git and in `helm get values`.
+    existingConfigMap:
+      enabled: false
+      name: enterprise-ca
+      key: ca-bundle.crt
   images:
     # The official Perses image, docker.io/persesdev/perses, copied to quay.io with both architectures and the
     # same digests (docs/evidence/crc/17-converter-login-token.txt). Its server is the conversion engine. The

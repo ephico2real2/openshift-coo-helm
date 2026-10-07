@@ -117,7 +117,27 @@ One pod with three containers. None of the images is built here.
 
 **What is not kept:** anything. The upload is parsed, converted and returned. The pod has a read-only root filesystem and no persistent volume; the upload is held in memory only (the one volume on the node's disk holds the engine's unpacked plugins), the request log has no bodies, and the login's session key is minted in memory at start (a restart signs everyone out; the next request logs them in again).
 
-**The login's token.** The proxy's OAuth client is the pod's ServiceAccount, and its client secret is that ServiceAccount's token, which the proxy reads once, when it starts. The pod uses the default token mount, like any pod: the kubelet renews the file by itself, and the token the proxy read at start stays valid for a year. Chart 0.4.0 and 0.5.0 instead mounted a token of their own that was asked to expire after an hour, so an hour after the pod started every new login ended in `500 Internal Error` until the pod was restarted. If you see that on those versions, `oc rollout restart deployment/perses-converter -n <namespace>` gives another hour; chart 0.5.1 removes the cause. The ServiceAccount is bound to no Role, so its token opens nothing in the cluster.
+**The CAs the login trusts.** After you log in, the proxy exchanges a code with the OAuth server at its public route. On a cluster whose `*.apps` certificate is signed by a company CA, the ServiceAccount's `ca.crt` does not cover that route, and the login ends in `500 Internal Error`; the proxy's log says `error redeeming code ... x509: certificate signed by unknown authority`. Two values under `converter.trustedCA` tell the proxy what else to trust:
+
+- `injected.enabled` (on by default): the chart creates an empty ConfigMap, `perses-converter-trusted-ca`, with the label `config.openshift.io/inject-trusted-cabundle: "true"`. OpenShift fills it with the system trust store and the CA in `proxy/cluster`'s `spec.trustedCA`. Nothing to maintain; it carries the CAs the cluster has been told about.
+- `existingConfigMap` (`enabled`, `name`, `key`): a ConfigMap you made in the converter's namespace, for a CA the cluster has not been told about.
+
+```bash
+oc create configmap enterprise-ca --from-file=ca-bundle.crt=/path/to/ca.pem -n <namespace>
+```
+
+```yaml
+converter:
+  trustedCA:
+    existingConfigMap:
+      enabled: true
+      name: enterprise-ca
+      key: ca-bundle.crt
+```
+
+Both are mounted in the proxy container only. Under Argo CD the injected ConfigMap carries `ServerSideApply=true`, so that the operator keeps the data it wrote; if the Application still reports it out of sync, add an `ignoreDifferences` entry for that ConfigMap's `/data`.
+
+**The login's token.** The proxy's OAuth client is the pod's ServiceAccount, and its client secret is that ServiceAccount's token, which the proxy reads once, when it starts. The pod uses the default token mount, like any pod: the kubelet renews the file by itself, and the token the proxy read at start stays valid for a year. Chart 0.4.0 and 0.5.0 instead mounted a token of their own that was valid for an hour; by the proxy's source, a pod older than that cannot complete a new login. Chart 0.5.1 removed it. That was not the `500` reported from a remote cluster, which was the certificate above. The ServiceAccount is bound to no Role, so its token opens nothing in the cluster.
 
 **Health checks:** at start, a check every 5 seconds decides when the pod is Ready, and stops at its first success. After that the page and the login proxy are each checked every 30 minutes (`converter.livenessPeriodSeconds`; 900 is 15 minutes), and one failed check restarts that container. There is no other periodic check: the page converts on request, and every probe is a request it would have to serve and log. What this leaves out:
 
@@ -154,6 +174,8 @@ This is the upstream image's server, not COO's own: COO's converter differs on t
 | `converter.thanosURL` | Thanos Querier, port 9091 | Written into the `PersesDatasource` the page can add |
 | `converter.route.host` | empty: the cluster picks it | The page's hostname |
 | `converter.networkPolicy.enabled` | `true` | The policy described above |
+| `converter.trustedCA.injected.enabled` | `true` | An empty ConfigMap that OpenShift fills with the cluster's trusted CA bundle, named to the login proxy |
+| `converter.trustedCA.existingConfigMap.enabled`, `.name`, `.key` | `false`, `enterprise-ca`, `ca-bundle.crt` | A ConfigMap of yours with an extra CA, named to the login proxy as well |
 | `converter.images.*`, `converter.resources.*` | see `values.yaml` | The three images, and the requests and limits |
 
 ## Measured
@@ -174,11 +196,12 @@ On CRC 4.22.7 on 2026-10-06 ([evidence 15](evidence/crc/15-converter.txt)), in `
 | The whole visit in a browser, as `developer` | The address leads to the OpenShift login, then the question above, then the page; `POST api/convert` answers `200`; no request failed |
 | The file downloaded in the browser | 23 panels identical to `percli migrate --input DS_PROMETHEUS=ipsec-nas-thanos` run in the pod; accepted by the cluster |
 | Health checks in the first 4 minutes of a pod | 1 request in the page's log, the start-up check; no restart. Before the change, with a readiness check every 10 s: 60 in 10 minutes |
+| The trusted CA bundle ([evidence 18](evidence/crc/18-converter-trusted-ca.txt)) | OpenShift filled the ConfigMap with 152 certificates; the proxy was named the ServiceAccount's CA and the bundle, and a login completed. With a supplied ConfigMap as a third file: a login completed |
 | Deployed by Argo CD v3.5.3: the two values added to the Application, over the objects applied by hand | Synced and Healthy 53 s after the patch; Argo CD tracks the 6 objects; the visit in a browser repeated: `200`, 23 panels identical to `percli` |
 | A first install by Argo CD: the six objects deleted, then `converter.enabled: true` | Synced and Healthy, the pod ready, 37 s after the value was set; the visit in a browser repeated: `200`, 23 panels identical to `percli` in the new pod |
 | Turned off under Argo CD (`converter.enabled: false`), with automatic sync and no pruning | Argo CD keeps the six objects and reports them as requiring pruning; the page stays up until they are pruned or deleted |
 
-**Not measured:** the downloaded dashboard opened in the console, a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
+**Not measured:** a cluster whose `*.apps` certificate is signed by a company CA (the lab's is covered by the ServiceAccount's `ca.crt`, so the failure and its cure were not seen there), the downloaded dashboard opened in the console, a liveness check that fails, and a login through an identity provider other than the lab's `developer`.
 
 ## Tests
 
