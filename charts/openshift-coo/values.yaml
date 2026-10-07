@@ -14,8 +14,17 @@ namespace:
   # true: the chart creates it with openshift.io/cluster-monitoring: "true", so the platform Prometheus scrapes
   # COO (COO's CSV asks for it). `helm uninstall` then deletes the namespace, which removes the operator and its
   # CSV with it (OLM leaves a CSV behind when only the Subscription is deleted).
-  # false: the namespace already exists, carries that label, and holds one OperatorGroup with no targetNamespaces
-  # (the chart then renders none).
+  # false: the namespace already exists, made outside this chart, and carries that label. The chart still
+  # installs the operator into it: the OperatorGroup below does not depend on this value.
+  create: true
+
+# The OperatorGroup that lets OLM install COO in the namespace: one with no targetNamespaces (AllNamespaces, the
+# only install mode COO supports). Independent of namespace.create.
+operatorGroup:
+  # true: the chart creates it, named after operator.package.
+  # false: the namespace already holds an OperatorGroup with no targetNamespaces. OLM allows one per namespace:
+  # with two it installs nothing, and with none it installs nothing and says nothing. The approver Job checks
+  # for exactly one before it waits, and fails with the reason.
   create: true
 
 operator:

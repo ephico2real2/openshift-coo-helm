@@ -10,6 +10,12 @@
         "create": {"type": "boolean"}
       }
     },
+    "operatorGroup": {
+      "type": "object", "additionalProperties": false, "required": ["create"],
+      "properties": {
+        "create": {"type": "boolean", "description": "Create the OperatorGroup; independent of namespace.create"}
+      }
+    },
     "operator": {
       "type": "object", "additionalProperties": false,
       "required": ["version", "channel", "package", "source", "sourceNamespace"],

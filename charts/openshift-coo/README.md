@@ -10,10 +10,11 @@ The behaviours below were measured on OpenShift Local (CRC 4.22.7) with COO 1.5.
 
 | Step | Objects | Measured |
 |---|---|---|
-| Namespace | `openshift-cluster-observability-operator`, labelled `openshift.io/cluster-monitoring: "true"` so the platform Prometheus scrapes COO; an OperatorGroup with no target namespaces (COO supports AllNamespaces only) | |
+| Namespace | `openshift-cluster-observability-operator`, labelled `openshift.io/cluster-monitoring: "true"` so the platform Prometheus scrapes COO. Not rendered with `namespace.create: false` | |
+| OperatorGroup | One with no target namespaces (COO supports AllNamespaces only). Rendered whether or not the chart creates the namespace (`operatorGroup.create`) | without one OLM stages nothing and reports nothing ([evidence 16](../../docs/evidence/crc/16-operatorgroup.txt)) |
 | Subscription | channel `stable`, **Manual** approval, `startingCSV` = `operator.version` | |
 | Reclaim (hook) | Deletes a CSV an earlier uninstall left behind, after OLM reports `ResolutionFailed`; nothing else | reinstall over a left-over CSV: 60 s, no human step |
-| Approve (hook) | Approves the InstallPlan for **`operator.version` only** (exact CSV name), then waits for it to complete | clean install: approved 21 s after `helm install` |
+| Approve (hook) | First checks that the namespace holds exactly one OperatorGroup, with no target namespaces, and fails with the reason if not. Then approves the InstallPlan for **`operator.version` only** (exact CSV name), and waits for it to complete | clean install: approved 21 s after `helm install` |
 | UIPlugin `monitoring` | Perses and incident detection; COO runs the Perses server and adds the console plugin itself | `Available` 5 s after it was applied to a running COO ([evidence 02](../../docs/evidence/crc/02-uiplugin-perses.txt)) |
 | Scrape grant | A Role and RoleBinding for the platform Prometheus, under the chart's name ([Known issues](#known-issues)) | |
 | Metrics access | `cluster-monitoring-view` for the groups in `metricsAccess.groups` (none by default) | |
@@ -31,6 +32,10 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 ```
 
 `--timeout 15m`: Helm waits for the hooks only up to its timeout (default 5 minutes). The gate's Job, and its log, are kept for `jobs.ttlSecondsAfterFinished` (600 s) under Helm; Argo CD deletes a hook Job as soon as it succeeds (`HookSucceeded`), so read the result in the Application's sync status there.
+
+**A namespace made outside the chart.** Set `namespace.create: false`. The chart then renders no Namespace and still installs the operator: the OperatorGroup and the Subscription go into the namespace you made. The label `openshift.io/cluster-monitoring: "true"` on that namespace is then yours to set; the gate fails, naming it, when it is missing. The release may live in COO's namespace in this case: the chart no longer deletes it on uninstall, so the cleanup Job can run there too.
+
+If the namespace already holds an OperatorGroup of its own, set `operatorGroup.create: false`: OLM allows one per namespace. The approver Job checks before it waits, and stops within seconds, naming the value to change, when it finds none, more than one, or one that selects namespaces. Measured on CRC ([evidence 16](../../docs/evidence/crc/16-operatorgroup.txt)): a Subscription with no OperatorGroup got no state, no InstallPlan and no event in 90 s; the check stopped the Job 9 s after it was created in each of the three wrong cases.
 
 **Argo CD:** [`examples/argocd-application.yaml`](examples/argocd-application.yaml). The Application points at COO's namespace, without `CreateNamespace`, and sets `skipCrds: true`: the UIPlugin CRD then comes from OLM before the UIPlugin's wave. Measured: first sync **green in 72 s** on a cluster with no COO CRDs.
 
@@ -50,7 +55,8 @@ oc logs -n openshift-cluster-observability-operator job/openshift-coo-wait     #
 | `operator.version` | `1.5.3` | The COO version installed, and the only one approved |
 | `operator.channel`, `.source`, `.sourceNamespace`, `.package` | `stable`, `redhat-operators`, `openshift-marketplace`, `cluster-observability-operator` | Where OLM finds COO; a mirrored catalog changes `source` |
 | `namespace.name` | `openshift-cluster-observability-operator` | COO's namespace |
-| `namespace.create` | `true` | `false`: the namespace exists, carries the label, and holds an OperatorGroup |
+| `namespace.create` | `true` | `false`: the namespace was made outside the chart and carries the label `openshift.io/cluster-monitoring: "true"`. The chart still installs the operator into it |
+| `operatorGroup.create` | `true` | The OperatorGroup OLM needs to install COO, with no targetNamespaces. Independent of `namespace.create`. `false`: the namespace already holds one |
 | `uiPlugin.perses` | `true` | Perses dashboards in the console |
 | `uiPlugin.clusterHealthAnalyzer` | `true` | Incident detection, GA on OpenShift 4.19 and later. Keep it on ([Known issues](#known-issues)) |
 | `platformScrapeRBAC` | `true` | The chart's own scrape grant for the platform Prometheus. Keep it on |
