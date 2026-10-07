@@ -70,3 +70,14 @@ OperatorGroups in the namespace: one
   -> Job succeeded/failed: /1; 38 s after it was created
 # Case 4 passes the check and then waits for an InstallPlan that cannot come: the namespace has no Subscription.
 # The check passing on a real install is section 4.
+
+### 4. The check on the lab's real COO install, run by Argo CD
+# Application openshift-gitops/openshift-coo (targetRevision main, automated sync) picked up the merge of chart 0.5.0
+# (revision 644a4b8) 253 s after it, and was Synced and Healthy 51 s later. Its approver Job, a Sync hook, logged:
+[approver 01:25:06] target cluster-observability-operator.v1.5.3 in openshift-cluster-observability-operator
+[approver 01:25:06] OperatorGroup cluster-observability-operator: one, for all namespaces
+[approver 01:25:06] cluster-observability-operator.v1.5.3 is the installed CSV; nothing to approve
+# After the sync:
+OperatorGroup cluster-observability-operator: targetNamespaces=[] chart=openshift-coo-0.5.0
+Role openshift-coo-approver: installplans get,list,patch; subscriptions get; clusterserviceversions get,list; operatorgroups get,list
+cluster-observability-operator.v1.5.3 Succeeded
